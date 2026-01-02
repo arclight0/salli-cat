@@ -10,6 +10,7 @@ dependencies = [
     "pyyaml",
     "honcho",
     "python-dotenv",
+    "internetarchive",
 ]
 
 [project.scripts]

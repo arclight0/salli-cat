@@ -767,6 +767,8 @@ def main():
     parser.add_argument("--use-discovered", action="store_true", help="Scrape all discovered brands (instead of config)")
     parser.add_argument("--scrape-only", action="store_true", help="Only scrape listings, don't download")
     parser.add_argument("--download-only", action="store_true", help="Only download pending manuals")
+    parser.add_argument("--upload-to-ia", action="store_true", help="Upload downloaded manuals to Internet Archive")
+    parser.add_argument("--ia-limit", type=int, help="Limit number of uploads to Internet Archive")
     parser.add_argument("--clear", action="store_true", help="Clear all manual records from database before scraping")
     parser.add_argument("--clear-brands", action="store_true", help="Clear all discovered brands from database")
     parser.add_argument("--clear-all", action="store_true", help="Clear both manuals and brands from database")
@@ -810,6 +812,23 @@ def main():
         logger.info("Clearing all manual records from database...")
         database.clear_all()
         logger.info("Manuals cleared.")
+
+    # Handle Internet Archive upload (no browser needed)
+    if args.upload_to_ia:
+        from ia_uploader import upload_all_pending, get_uploadable_manuals
+
+        manuals = get_uploadable_manuals(source="manualslib", limit=args.ia_limit)
+        logger.info(f"Found {len(manuals)} manuals ready for Internet Archive upload")
+
+        if manuals:
+            success, failed = upload_all_pending(
+                source="manualslib",
+                limit=args.ia_limit,
+            )
+            logger.info(f"Internet Archive upload complete. Success: {success}, Failed: {failed}")
+        else:
+            logger.info("No manuals to upload")
+        return
 
     # Get browser and extension settings
     project_dir = Path(__file__).parent
