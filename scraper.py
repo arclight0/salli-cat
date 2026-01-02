@@ -13,6 +13,7 @@ import yaml
 from playwright.sync_api import sync_playwright, Page
 
 import database
+from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking
 from captcha_solver import TwoCaptchaSolver, extract_sitekey_from_page, inject_captcha_response
 
 logging.basicConfig(
@@ -643,14 +644,34 @@ def main():
         database.clear_all()
         logger.info("Manuals cleared.")
 
+    # Get extension path for ad blocking
+    project_dir = Path(__file__).parent
+    extension_path = get_extension_path(config, project_dir)
+    if extension_path:
+        logger.info(f"Using uBlock Origin extension: {extension_path}")
+    else:
+        logger.info("No uBlock Origin extension found - will use route-based ad blocking")
+        logger.info("To use uBlock Origin, set 'ublock_origin_path' in config.yaml or place extension in ./extensions/ublock_origin/")
+
     with sync_playwright() as p:
-        # Launch browser in headed mode so human can solve captchas
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        # Launch browser with extension support (requires persistent context)
+        context = launch_browser_with_extension(
+            p,
+            extension_path=extension_path,
+            headless=False,  # Extensions may not work in headless mode
         )
-        page = context.new_page()
+
+        # Persistent context may already have pages open, use the first one or create new
+        if context.pages:
+            page = context.pages[0]
+        else:
+            page = context.new_page()
+
+        # If no extension, use route-based ad blocking as fallback
+        if not extension_path:
+            setup_route_ad_blocking(page)
+        else:
+            logger.info("uBlock Origin extension loaded for ad blocking")
 
         try:
             # Brand discovery mode
@@ -672,7 +693,7 @@ def main():
                     logger.info(f"Total: {len(all_tv_related_categories)} unique TV-related categories")
                     logger.info("Note: Only exact 'TV' and 'TV * Combo' patterns were included in brand discovery.")
 
-                browser.close()
+                context.close()
                 return
 
             # Determine which brands to scrape
@@ -747,7 +768,7 @@ def main():
                         scrape_brand(page, brand, download_dir, download=not args.scrape_only, categories=configured_categories, captcha_solver=captcha_solver)
                         random_delay(3, 6)
         finally:
-            browser.close()
+            context.close()
 
     stats = database.get_stats()
     logger.info(f"Scraping complete. Total: {stats['total']}, Downloaded: {stats['downloaded']}, Archived: {stats['archived']}, Pending: {stats['pending']}")

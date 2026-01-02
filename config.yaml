@@ -27,3 +27,10 @@ download_dir: ./downloads
 manualzz_urls:
   - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs
   - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/monitors+CRT
+
+# uBlock Origin extension for ad blocking (optional)
+# Download from: https://github.com/AmpMn/AmpMn/releases
+# Look for uBlock0_X.XX.X.chromium.zip and extract to this path
+# The directory should contain manifest.json
+# If not set, falls back to route-based ad blocking
+# ublock_origin_path: ./extensions/ublock_origin

@@ -18,10 +18,13 @@ manualslib-scraper/
 ├── manualzz_scraper.py   # Manualzz Playwright scraper
 ├── archive_checker.py    # Background archive.org checker
 ├── captcha_solver.py     # 2captcha integration for auto-solving
+├── browser_helper.py     # Browser launch helper with extension support
 ├── database.py           # SQLite database layer
 ├── dashboard.py          # Flask web dashboard
 ├── templates/
 │   └── index.html        # Dashboard UI
+├── extensions/           # Browser extensions (optional)
+│   └── ublock_origin/    # uBlock Origin for ad blocking
 ├── downloads/            # Downloaded PDFs (organized by source/brand)
 └── manuals.db            # SQLite database (created on first run)
 ```
@@ -212,6 +215,27 @@ If 2captcha is not configured (or fails), the scraper falls back to manual solvi
 CAPTCHA DETECTED - Please solve it in the browser window
 ============================================================
 ```
+
+## Ad Blocking
+
+The scrapers support ad blocking to prevent ads from interfering with the scraping process. Two methods are available:
+
+### uBlock Origin Extension (Recommended)
+
+For comprehensive ad blocking, you can load the uBlock Origin browser extension:
+
+1. Download uBlock Origin for Chromium from [GitHub releases](https://github.com/AmpMn/AmpMn/releases) (look for `uBlock0_X.XX.X.chromium.zip`)
+2. Extract the `.zip` file to `./extensions/ublock_origin/` (the directory should contain `manifest.json`)
+3. The scraper will automatically load the extension
+
+Alternatively, specify a custom path in `config.yaml`:
+```yaml
+ublock_origin_path: /path/to/ublock_origin
+```
+
+### Route-Based Blocking (Fallback)
+
+If no extension is configured, the scrapers fall back to route-based blocking which intercepts requests to known ad domains. This is less comprehensive but requires no setup.
 
 ## Dashboard Features
 

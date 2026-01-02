@@ -16,6 +16,7 @@ import yaml
 from playwright.sync_api import sync_playwright, Page
 
 import database
+from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking
 
 logging.basicConfig(
     level=logging.INFO,
@@ -319,17 +320,29 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
     return None
 
 
-def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True):
+def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True, extension_path: Path = None):
     """Main scraping function for manualzz."""
     database.init_db()
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 800},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        # Launch browser with extension support (requires persistent context)
+        context = launch_browser_with_extension(
+            p,
+            extension_path=extension_path,
+            headless=False,
         )
-        page = context.new_page()
+
+        # Persistent context may already have pages open, use the first one or create new
+        if context.pages:
+            page = context.pages[0]
+        else:
+            page = context.new_page()
+
+        # If no extension, use route-based ad blocking as fallback
+        if not extension_path:
+            setup_route_ad_blocking(page)
+        else:
+            logger.info("uBlock Origin extension loaded for ad blocking")
 
         try:
             total_count = 0
@@ -344,7 +357,7 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
 
             if not download:
                 logger.info(f"Scraping complete. Found {total_count} manuals. Skipping downloads.")
-                browser.close()
+                context.close()
                 return
 
             # Download pending manuals
@@ -372,7 +385,7 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
                     continue
 
         finally:
-            browser.close()
+            context.close()
 
     stats = database.get_stats(source="manualzz")
     logger.info(f"Manualzz scraping complete. Total: {stats['total']}, Downloaded: {stats['downloaded']}, Pending: {stats['pending']}")
@@ -403,15 +416,34 @@ def main():
         logger.error("No catalog URLs specified. Add manualzz_urls to config.yaml or use --urls")
         return
 
+    # Get extension path for ad blocking
+    project_dir = Path(__file__).parent
+    extension_path = get_extension_path(config, project_dir)
+    if extension_path:
+        logger.info(f"Using uBlock Origin extension: {extension_path}")
+    else:
+        logger.info("No uBlock Origin extension found - will use route-based ad blocking")
+        logger.info("To use uBlock Origin, set 'ublock_origin_path' in config.yaml or place extension in ./extensions/ublock_origin/")
+
     if args.download_only:
         # Only download pending manuals
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            # Launch browser with extension support
+            context = launch_browser_with_extension(
+                p,
+                extension_path=extension_path,
+                headless=False,
             )
-            page = context.new_page()
+
+            # Persistent context may already have pages open
+            if context.pages:
+                page = context.pages[0]
+            else:
+                page = context.new_page()
+
+            # If no extension, use route-based ad blocking as fallback
+            if not extension_path:
+                setup_route_ad_blocking(page)
 
             try:
                 pending = database.get_undownloaded_manuals(source="manualzz")
@@ -436,9 +468,9 @@ def main():
                     except Exception as e:
                         logger.error(f"Error downloading {manual_record['model']}: {e}")
             finally:
-                browser.close()
+                context.close()
     else:
-        scrape_manualzz(catalog_urls, download_dir, download=not args.scrape_only)
+        scrape_manualzz(catalog_urls, download_dir, download=not args.scrape_only, extension_path=extension_path)
 
 
 if __name__ == "__main__":
