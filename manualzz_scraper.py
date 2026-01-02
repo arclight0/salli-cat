@@ -2,6 +2,7 @@
 """Scraper for manualzz.com TV manuals."""
 
 import argparse
+import hashlib
 import logging
 import random
 import re
@@ -39,6 +40,19 @@ def random_delay(min_sec: float = 2.0, max_sec: float = 5.0):
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+
+def compute_checksums(file_path: Path) -> tuple[str, str]:
+    """Compute SHA1 and MD5 checksums for a file. Returns (sha1, md5)."""
+    sha1 = hashlib.sha1()
+    md5 = hashlib.md5()
+
+    with open(file_path, 'rb') as f:
+        while chunk := f.read(8192):
+            sha1.update(chunk)
+            md5.update(chunk)
+
+    return sha1.hexdigest(), md5.hexdigest()
 
 
 def extract_manualzz_id(url: str) -> str | None:
@@ -204,8 +218,8 @@ def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> bool:
     return False
 
 
-def download_manual(page: Page, manual: dict, download_dir: Path) -> str | None:
-    """Download a single manual from manualzz. Returns file path if successful."""
+def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, str, str, int] | None:
+    """Download a single manual from manualzz. Returns (file_path, sha1, md5, file_size) if successful, None otherwise."""
     logger.info(f"Downloading: {manual['title']} - {manual['manual_url']}")
 
     page.goto(manual["manual_url"], wait_until="networkidle")
@@ -271,8 +285,10 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> str | None:
                 format_link.click()
                 download = download_info.value
                 download.save_as(file_path)
-                logger.info(f"Downloaded: {file_path}")
-                return str(file_path)
+                sha1, md5 = compute_checksums(file_path)
+                file_size = file_path.stat().st_size
+                logger.info(f"Downloaded: {file_path} ({file_size} bytes, SHA1: {sha1[:8]}..., MD5: {md5[:8]}...)")
+                return str(file_path), sha1, md5, file_size
             except Exception as e:
                 logger.error(f"Download failed: {e}")
                 return None
@@ -289,8 +305,10 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> str | None:
                 with urllib.request.urlopen(req, timeout=120) as response:
                     with open(file_path, 'wb') as f:
                         f.write(response.read())
-                logger.info(f"Downloaded: {file_path}")
-                return str(file_path)
+                sha1, md5 = compute_checksums(file_path)
+                file_size = file_path.stat().st_size
+                logger.info(f"Downloaded: {file_path} ({file_size} bytes, SHA1: {sha1[:8]}..., MD5: {md5[:8]}...)")
+                return str(file_path), sha1, md5, file_size
             except Exception as e:
                 logger.error(f"Direct download failed: {e}")
 
@@ -332,7 +350,7 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
 
             for manual_record in pending:
                 try:
-                    file_path = download_manual(
+                    result = download_manual(
                         page,
                         {
                             "title": manual_record["model"],
@@ -342,8 +360,9 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
                         },
                         download_dir
                     )
-                    if file_path:
-                        database.update_downloaded(manual_record["id"], file_path)
+                    if result:
+                        file_path, sha1, md5, file_size = result
+                        database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size)
                     random_delay()
                 except Exception as e:
                     logger.error(f"Error downloading {manual_record['model']}: {e}")
@@ -397,7 +416,7 @@ def main():
 
                 for manual_record in pending:
                     try:
-                        file_path = download_manual(
+                        result = download_manual(
                             page,
                             {
                                 "title": manual_record["model"],
@@ -407,8 +426,9 @@ def main():
                             },
                             download_dir
                         )
-                        if file_path:
-                            database.update_downloaded(manual_record["id"], file_path)
+                        if result:
+                            file_path, sha1, md5, file_size = result
+                            database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size)
                         random_delay()
                     except Exception as e:
                         logger.error(f"Error downloading {manual_record['model']}: {e}")

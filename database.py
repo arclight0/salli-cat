@@ -72,6 +72,11 @@ def init_db():
         ("source", "TEXT DEFAULT 'manualslib'"),
         ("source_id", "TEXT"),
         ("category", "TEXT"),
+        ("file_sha1", "TEXT"),
+        ("file_md5", "TEXT"),
+        ("file_size", "INTEGER"),
+        ("scraped_at", "TEXT"),
+        ("downloaded_at", "TEXT"),
     ]:
         try:
             cursor.execute(f"ALTER TABLE manuals ADD COLUMN {col} {coltype}")
@@ -105,11 +110,12 @@ def add_manual(
 ) -> int | None:
     conn = get_connection()
     cursor = conn.cursor()
+    scraped_at = datetime.now().isoformat()
     try:
         cursor.execute("""
-            INSERT INTO manuals (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id, source, source_id, category)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id, source, source_id, category))
+            INSERT INTO manuals (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id, source, source_id, category, scraped_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id, source, source_id, category, scraped_at))
         conn.commit()
         return cursor.lastrowid
     except sqlite3.IntegrityError:
@@ -219,14 +225,15 @@ def get_brand_stats() -> dict:
     }
 
 
-def update_downloaded(manual_id: int, file_path: str):
+def update_downloaded(manual_id: int, file_path: str, file_sha1: str = None, file_md5: str = None, file_size: int = None):
     conn = get_connection()
     cursor = conn.cursor()
+    downloaded_at = datetime.now().isoformat()
     cursor.execute("""
         UPDATE manuals
-        SET downloaded = 1, file_path = ?
+        SET downloaded = 1, file_path = ?, file_sha1 = ?, file_md5 = ?, file_size = ?, downloaded_at = ?
         WHERE id = ?
-    """, (file_path, manual_id))
+    """, (file_path, file_sha1, file_md5, file_size, downloaded_at, manual_id))
     conn.commit()
     conn.close()
 
