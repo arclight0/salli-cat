@@ -78,6 +78,7 @@ def init_db():
         ("scraped_at", "TEXT"),
         ("downloaded_at", "TEXT"),
         ("archive_checked_at", "TEXT"),
+        ("original_filename", "TEXT"),
     ]:
         try:
             cursor.execute(f"ALTER TABLE manuals ADD COLUMN {col} {coltype}")
@@ -226,15 +227,15 @@ def get_brand_stats() -> dict:
     }
 
 
-def update_downloaded(manual_id: int, file_path: str, file_sha1: str = None, file_md5: str = None, file_size: int = None):
+def update_downloaded(manual_id: int, file_path: str, file_sha1: str = None, file_md5: str = None, file_size: int = None, original_filename: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     downloaded_at = datetime.now().isoformat()
     cursor.execute("""
         UPDATE manuals
-        SET downloaded = 1, file_path = ?, file_sha1 = ?, file_md5 = ?, file_size = ?, downloaded_at = ?
+        SET downloaded = 1, file_path = ?, file_sha1 = ?, file_md5 = ?, file_size = ?, downloaded_at = ?, original_filename = ?
         WHERE id = ?
-    """, (file_path, file_sha1, file_md5, file_size, downloaded_at, manual_id))
+    """, (file_path, file_sha1, file_md5, file_size, downloaded_at, original_filename, manual_id))
     conn.commit()
     conn.close()
 

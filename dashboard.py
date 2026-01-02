@@ -108,7 +108,7 @@ def api_clear_all():
 
 @app.route("/download/<int:manual_id>")
 def download_file(manual_id):
-    """Serve a downloaded PDF file."""
+    """Serve a downloaded PDF file with the original filename."""
     manuals = database.get_all_manuals()
     manual = next((m for m in manuals if m["id"] == manual_id), None)
 
@@ -119,7 +119,20 @@ def download_file(manual_id):
     if not file_path.exists():
         return "File not found on disk", 404
 
-    return send_file(file_path, as_attachment=True)
+    # Use the original filename if stored, otherwise generate one from model/doc_type
+    original_filename = manual.get("original_filename")
+    if not original_filename:
+        # Fallback: generate filename from model and doc_type
+        model = manual.get("model", "manual")
+        doc_type = manual.get("doc_type", "")
+        if doc_type:
+            original_filename = f"{model}_{doc_type}.pdf"
+        else:
+            original_filename = f"{model}.pdf"
+        # Sanitize the generated filename
+        original_filename = "".join(c if c.isalnum() or c in " ._-" else "_" for c in original_filename)
+
+    return send_file(file_path, as_attachment=True, download_name=original_filename)
 
 
 if __name__ == "__main__":

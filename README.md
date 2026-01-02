@@ -279,7 +279,8 @@ SQLite database (`manuals.db`) with two tables:
 | manualslib_id | TEXT | ManualsLib document ID |
 | downloaded | INTEGER | 0 = pending, 1 = downloaded |
 | archived | INTEGER | 0 = not archived, 1 = on archive.org |
-| file_path | TEXT | Local path to downloaded PDF |
+| file_path | TEXT | Local path to downloaded PDF (SHA1-based) |
+| original_filename | TEXT | Original filename for display/download |
 | archive_url | TEXT | URL on archive.org |
 
 ## Archive.org Integration
@@ -291,27 +292,25 @@ If archived, it skips the download and records the archive URL.
 
 ## Downloaded Files
 
-PDFs are saved organized by source and brand:
+PDFs are stored using content-addressable storage based on SHA1 hash (similar to git's object storage). This prevents filename collisions when different manuals have the same suggested filename.
 
-- **ManualsLib**: `downloads/{brand}/{model}_{doc_type}.pdf`
-- **Manualzz**: `downloads/manualzz/{brand}/{title}.pdf`
+**Storage structure**: `downloads/{sha1[:2]}/{sha1[2:4]}/{sha1}.pdf`
 
 Example:
 ```
 downloads/
-├── rca/
-│   ├── RLDED5078A_User Manual.pdf
-│   └── LED32A30RQ_User Manual.pdf
-├── sharp/
-│   └── LC-50LB371U_Operation Manual.pdf
-├── panasonic/
-│   └── TC-P50X5_Owner_s Manual.pdf
-└── manualzz/
-    ├── Sony/
-    │   └── KV-27FS120 CRT Television.pdf
-    └── Panasonic/
-        └── CT-27SX12 Service Manual.pdf
+├── 3a/
+│   └── 7f/
+│       └── 3a7f2b9c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a.pdf
+├── a1/
+│   └── b2/
+│       └── a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0.pdf
+└── f9/
+    └── e8/
+        └── f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0.pdf
 ```
+
+The original filename (from the server's Content-Disposition header) is preserved in the database. When downloading through the dashboard, files are served with their original filenames.
 
 ## Resume Capability
 

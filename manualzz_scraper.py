@@ -6,10 +6,12 @@ import hashlib
 import logging
 import random
 import re
+import shutil
+import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
 from pathlib import Path
 
 import yaml
@@ -41,6 +43,23 @@ def random_delay(min_sec: float = 2.0, max_sec: float = 5.0):
 
 def sanitize_filename(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]', '_', name)
+
+
+def get_sha1_storage_path(download_dir: Path, sha1: str, extension: str = ".pdf") -> Path:
+    """
+    Get the trie-based storage path for a file based on its SHA1 hash.
+
+    Uses git-style object storage: ab/cd/abcdef1234...
+    First 2 chars as first directory, next 2 as second directory, full hash as filename.
+    """
+    if len(sha1) < 4:
+        raise ValueError(f"SHA1 hash too short: {sha1}")
+
+    dir1 = sha1[:2]
+    dir2 = sha1[2:4]
+    filename = sha1 + extension
+
+    return download_dir / dir1 / dir2 / filename
 
 
 def compute_checksums(file_path: Path) -> tuple[str, str]:
@@ -219,8 +238,15 @@ def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> bool:
     return False
 
 
-def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, str, str, int] | None:
-    """Download a single manual from manualzz. Returns (file_path, sha1, md5, file_size) if successful, None otherwise."""
+def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, str, str, int, str] | None:
+    """
+    Download a single manual from manualzz using content-addressable storage.
+
+    Files are stored based on SHA1 hash in a trie structure: downloads/ab/cd/abcdef...pdf
+    The original filename is preserved in the database for display purposes.
+
+    Returns (file_path, sha1, md5, file_size, original_filename) if successful, None otherwise.
+    """
     logger.info(f"Downloading: {manual['title']} - {manual['manual_url']}")
 
     page.goto(manual["manual_url"], wait_until="domcontentloaded")
@@ -260,14 +286,8 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
             return None
         random_delay(1, 2)
 
-    # Prepare download directory
-    brand = sanitize_filename(manual.get("brand", "unknown"))
-    brand_dir = download_dir / "manualzz" / brand
-    brand_dir.mkdir(parents=True, exist_ok=True)
-
-    title = sanitize_filename(manual.get("title", "manual"))[:100]  # Limit filename length
-    filename = f"{title}.pdf"
-    file_path = brand_dir / filename
+    # Default original filename based on title
+    default_filename = sanitize_filename(manual.get("title", "manual"))[:100] + ".pdf"
 
     # After captcha, look for the download link
     # The download link uses javascript:download_source()
@@ -285,11 +305,35 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
             try:
                 format_link.click()
                 download = download_info.value
-                download.save_as(file_path)
-                sha1, md5 = compute_checksums(file_path)
-                file_size = file_path.stat().st_size
-                logger.info(f"Downloaded: {file_path} ({file_size} bytes, SHA1: {sha1[:8]}..., MD5: {md5[:8]}...)")
-                return str(file_path), sha1, md5, file_size
+
+                # Get original filename from download
+                original_filename = download.suggested_filename or default_filename
+                if not original_filename.lower().endswith('.pdf'):
+                    original_filename += '.pdf'
+
+                # Save to temp file first
+                with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                    temp_path = Path(tmp.name)
+                download.save_as(temp_path)
+
+                # Compute checksums
+                sha1, md5 = compute_checksums(temp_path)
+                file_size = temp_path.stat().st_size
+
+                # Move to SHA1-based storage path
+                final_path = get_sha1_storage_path(download_dir, sha1)
+                final_path.parent.mkdir(parents=True, exist_ok=True)
+
+                if final_path.exists():
+                    logger.info(f"File already exists at {final_path} (duplicate content)")
+                    temp_path.unlink()
+                else:
+                    shutil.move(str(temp_path), str(final_path))
+
+                logger.info(f"Downloaded: {final_path} ({file_size} bytes, SHA1: {sha1[:8]}...)")
+                logger.info(f"Original filename: {original_filename}")
+                return str(final_path), sha1, md5, file_size, original_filename
+
             except Exception as e:
                 logger.error(f"Download failed: {e}")
                 return None
@@ -305,14 +349,55 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
             logger.info(f"Found PDF link: {pdf_url}")
             try:
                 req = urllib.request.Request(pdf_url)
-                req.add_header('User-Agent', 'Mozilla/5.0')
+                req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+
                 with urllib.request.urlopen(req, timeout=120) as response:
-                    with open(file_path, 'wb') as f:
-                        f.write(response.read())
-                sha1, md5 = compute_checksums(file_path)
-                file_size = file_path.stat().st_size
-                logger.info(f"Downloaded: {file_path} ({file_size} bytes, SHA1: {sha1[:8]}..., MD5: {md5[:8]}...)")
-                return str(file_path), sha1, md5, file_size
+                    # Get original filename from Content-Disposition or URL
+                    content_disp = response.headers.get('Content-Disposition', '')
+                    original_filename = None
+
+                    if 'filename=' in content_disp:
+                        match = re.search(r'filename[*]?=["\']?([^"\';\n]+)["\']?', content_disp)
+                        if match:
+                            original_filename = match.group(1).strip()
+                            if original_filename.startswith("UTF-8''"):
+                                original_filename = urllib.parse.unquote(original_filename[7:])
+                            else:
+                                original_filename = urllib.parse.unquote(original_filename)
+
+                    if not original_filename:
+                        url_path = urllib.parse.urlparse(pdf_url).path
+                        original_filename = urllib.parse.unquote(url_path.split('/')[-1])
+
+                    if not original_filename or len(original_filename) < 3:
+                        original_filename = default_filename
+
+                    if not original_filename.lower().endswith('.pdf'):
+                        original_filename += '.pdf'
+
+                    # Download to temp file
+                    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
+                        tmp.write(response.read())
+                        temp_path = Path(tmp.name)
+
+                # Compute checksums
+                sha1, md5 = compute_checksums(temp_path)
+                file_size = temp_path.stat().st_size
+
+                # Move to SHA1-based storage path
+                final_path = get_sha1_storage_path(download_dir, sha1)
+                final_path.parent.mkdir(parents=True, exist_ok=True)
+
+                if final_path.exists():
+                    logger.info(f"File already exists at {final_path} (duplicate content)")
+                    temp_path.unlink()
+                else:
+                    shutil.move(str(temp_path), str(final_path))
+
+                logger.info(f"Downloaded: {final_path} ({file_size} bytes, SHA1: {sha1[:8]}...)")
+                logger.info(f"Original filename: {original_filename}")
+                return str(final_path), sha1, md5, file_size, original_filename
+
             except Exception as e:
                 logger.error(f"Direct download failed: {e}")
 
@@ -377,8 +462,8 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
                         download_dir
                     )
                     if result:
-                        file_path, sha1, md5, file_size = result
-                        database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size)
+                        file_path, sha1, md5, file_size, original_filename = result
+                        database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
                     random_delay()
                 except Exception as e:
                     logger.error(f"Error downloading {manual_record['model']}: {e}")
@@ -462,8 +547,8 @@ def main():
                             download_dir
                         )
                         if result:
-                            file_path, sha1, md5, file_size = result
-                            database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size)
+                            file_path, sha1, md5, file_size, original_filename = result
+                            database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
                         random_delay()
                     except Exception as e:
                         logger.error(f"Error downloading {manual_record['model']}: {e}")
