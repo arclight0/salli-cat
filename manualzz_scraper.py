@@ -18,7 +18,7 @@ import yaml
 from playwright.sync_api import sync_playwright, Page
 
 import database
-from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking
+from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking, apply_stealth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -424,6 +424,9 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
         else:
             page = context.new_page()
 
+        # Apply stealth patches to avoid fingerprint detection
+        apply_stealth(page)
+
         # If no extension loaded, use route-based ad blocking as fallback
         if not extension_loaded:
             setup_route_ad_blocking(page)
@@ -530,6 +533,9 @@ def main():
                 page = context.pages[0]
             else:
                 page = context.new_page()
+
+            # Apply stealth patches to avoid fingerprint detection
+            apply_stealth(page)
 
             # If no extension loaded, use route-based ad blocking as fallback
             if not extension_loaded:

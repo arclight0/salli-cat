@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Browser helper for launching Chromium with extensions (like uBlock Origin)."""
+"""Browser helper for launching browsers with stealth and extension support."""
 
 import logging
 import os
 import tempfile
 from pathlib import Path
 
-from playwright.sync_api import BrowserContext, Playwright
+from playwright.sync_api import BrowserContext, Playwright, Page
+from playwright_stealth import Stealth
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,23 @@ def launch_browser_with_extension(
     return context, extension_loaded
 
 
-def setup_route_ad_blocking(page) -> None:
+def apply_stealth(page: Page) -> None:
+    """
+    Apply stealth patches to a page to avoid fingerprint detection.
+
+    This patches various browser APIs to make automation less detectable:
+    - Removes navigator.webdriver
+    - Fixes Chrome runtime
+    - Fixes permissions API
+    - Fixes plugins/mimeTypes
+    - And many other evasion techniques
+    """
+    stealth = Stealth()
+    stealth.apply_stealth_sync(page)
+    logger.info("Stealth patches applied to page")
+
+
+def setup_route_ad_blocking(page: Page) -> None:
     """
     Set up route-based ad blocking on a page.
 

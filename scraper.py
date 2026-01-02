@@ -20,7 +20,7 @@ from playwright.sync_api import sync_playwright, Page
 load_dotenv()
 
 import database
-from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking
+from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking, apply_stealth
 from captcha_solver import TwoCaptchaSolver, extract_sitekey_from_page, inject_captcha_response
 
 logging.basicConfig(
@@ -813,6 +813,9 @@ def main():
             page = context.pages[0]
         else:
             page = context.new_page()
+
+        # Apply stealth patches to avoid fingerprint detection
+        apply_stealth(page)
 
         # If no extension loaded, use route-based ad blocking as fallback
         if not extension_loaded:
