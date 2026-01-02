@@ -261,18 +261,12 @@ def scrape_category_listing(page: Page, brand: str, category_url: str, category_
     page_num = 1
     manual_count = 0
 
-    # Parse the base URL for pagination
-    base_url = category_url.split('?')[0]  # Remove any existing query params
     cat_display = category_name or category_url.split('/')[-1].replace('.html', '')
+    current_url = category_url  # Start with the provided URL
 
-    while True:
-        if page_num == 1:
-            url = category_url
-        else:
-            url = f"{base_url}?p={page_num}"
-
-        logger.info(f"Scraping {brand} [{cat_display}] page {page_num}: {url}")
-        page.goto(url, wait_until="domcontentloaded")
+    while current_url:
+        logger.info(f"Scraping {brand} [{cat_display}] page {page_num}: {current_url}")
+        page.goto(current_url, wait_until="domcontentloaded")
         random_delay(1, 2)
 
         # Find all model rows
@@ -280,7 +274,8 @@ def scrape_category_listing(page: Page, brand: str, category_url: str, category_
 
         if not model_rows:
             logger.info(f"No more models found for {brand} [{cat_display}] on page {page_num}")
-            break
+            current_url = None  # Exit the loop
+            continue
 
         for row in model_rows:
             # Get model info from the mname column
@@ -333,13 +328,20 @@ def scrape_category_listing(page: Page, brand: str, category_url: str, category_
                 manual_count += 1
 
         # Check for next page
-        next_button = page.query_selector('a.pag-pnext:not(.disabled)')
-        if next_button:
-            page_num += 1
-            random_delay()
-        else:
-            logger.info(f"Reached last page for {brand} [{cat_display}]")
-            break
+        # Pagination structure: <ul class="pagination"><li class="active">...</li><li><a class="plink" href="...">2</a></li></ul>
+        next_page_link = page.query_selector('ul.pagination li.active + li a.plink')
+        if next_page_link:
+            next_href = next_page_link.get_attribute("href")
+            if next_href:
+                # Use the full URL from the link
+                current_url = next_href if next_href.startswith("http") else BASE_URL + next_href
+                page_num += 1
+                random_delay()
+                continue
+
+        # No more pages
+        logger.info(f"Reached last page for {brand} [{cat_display}]")
+        current_url = None  # Exit the loop
 
     logger.info(f"Found {manual_count} manuals for {brand} [{cat_display}]")
     return manual_count
