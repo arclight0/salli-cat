@@ -1,0 +1,6 @@
+brands:
+  - rca
+  - sharp
+  - panasonic
+  - sony
+download_dir: ./downloads

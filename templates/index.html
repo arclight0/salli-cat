@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ManualsLib Scraper Dashboard</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-width: 150px;
+        }
+        .stat-card h3 {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+        .stat-card.downloaded .value { color: #22c55e; }
+        .stat-card.archived .value { color: #3b82f6; }
+        .stat-card.pending .value { color: #f59e0b; }
+        .filters {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters label {
+            font-weight: 500;
+            color: #555;
+        }
+        .filters select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .brand-stats {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .brand-stats h2 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .brand-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .brand-name {
+            width: 100px;
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+        .progress-bar {
+            flex: 1;
+            height: 20px;
+            background: #e5e5e5;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #22c55e;
+            transition: width 0.3s;
+        }
+        .brand-count {
+            width: 80px;
+            text-align: right;
+            font-size: 14px;
+            color: #666;
+        }
+        table {
+            width: 100%;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #f9f9f9;
+            font-weight: 600;
+            color: #555;
+        }
+        tr:hover {
+            background: #f9f9f9;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status.downloaded {
+            background: #dcfce7;
+            color: #166534;
+        }
+        .status.pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .status.archived {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .brand-col {
+            text-transform: capitalize;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ManualsLib Scraper Dashboard</h1>
+
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <h3>Total Manuals</h3>
+                <div class="value" id="total">-</div>
+            </div>
+            <div class="stat-card downloaded">
+                <h3>Downloaded</h3>
+                <div class="value" id="downloaded">-</div>
+            </div>
+            <div class="stat-card archived">
+                <h3>Archived</h3>
+                <div class="value" id="archived">-</div>
+            </div>
+            <div class="stat-card pending">
+                <h3>Pending</h3>
+                <div class="value" id="pending">-</div>
+            </div>
+        </div>
+
+        <div class="brand-stats" id="brand-stats">
+            <h2>Progress by Brand</h2>
+            <div id="brand-bars"></div>
+        </div>
+
+        <div class="filters">
+            <label>Brand:</label>
+            <select id="filter-brand">
+                <option value="">All Brands</option>
+            </select>
+
+            <label>Status:</label>
+            <select id="filter-status">
+                <option value="">All</option>
+                <option value="downloaded">Downloaded</option>
+                <option value="archived">Archived</option>
+                <option value="pending">Pending</option>
+            </select>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Brand</th>
+                    <th>Model</th>
+                    <th>Document Type</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="manuals-table">
+                <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        async function loadStats() {
+            const res = await fetch('/api/stats');
+            const stats = await res.json();
+
+            document.getElementById('total').textContent = stats.total;
+            document.getElementById('downloaded').textContent = stats.downloaded;
+            document.getElementById('archived').textContent = stats.archived;
+            document.getElementById('pending').textContent = stats.pending;
+
+            const barsHtml = stats.by_brand.map(b => {
+                const done = b.downloaded + b.archived;
+                const pct = b.total > 0 ? (done / b.total * 100) : 0;
+                return `
+                    <div class="brand-bar">
+                        <span class="brand-name">${b.brand}</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${pct}%"></div>
+                        </div>
+                        <span class="brand-count">${done}/${b.total}</span>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('brand-bars').innerHTML = barsHtml || '<p>No data yet</p>';
+        }
+
+        async function loadBrands() {
+            const res = await fetch('/api/brands');
+            const brands = await res.json();
+
+            const select = document.getElementById('filter-brand');
+            brands.forEach(brand => {
+                const option = document.createElement('option');
+                option.value = brand;
+                option.textContent = brand.charAt(0).toUpperCase() + brand.slice(1);
+                select.appendChild(option);
+            });
+        }
+
+        async function loadManuals() {
+            const brand = document.getElementById('filter-brand').value;
+            const status = document.getElementById('filter-status').value;
+
+            let url = '/api/manuals?';
+            if (brand) url += `brand=${encodeURIComponent(brand)}&`;
+            if (status) url += `status=${status}`;
+
+            const res = await fetch(url);
+            const manuals = await res.json();
+
+            const tbody = document.getElementById('manuals-table');
+
+            if (manuals.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No manuals found. Run the scraper to populate data.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = manuals.map(m => {
+                let statusClass, statusText;
+                if (m.downloaded) {
+                    statusClass = 'downloaded';
+                    statusText = 'Downloaded';
+                } else if (m.archived) {
+                    statusClass = 'archived';
+                    statusText = 'Archived';
+                } else {
+                    statusClass = 'pending';
+                    statusText = 'Pending';
+                }
+
+                let actions = `<a href="${m.manual_url}" target="_blank">View</a>`;
+                if (m.downloaded) {
+                    actions += ` | <a href="/download/${m.id}">Download</a>`;
+                }
+                if (m.archived && m.archive_url) {
+                    actions += ` | <a href="${m.archive_url}" target="_blank">Archive.org</a>`;
+                }
+
+                const description = m.doc_description || '';
+
+                return `
+                    <tr>
+                        <td class="brand-col">${m.brand}</td>
+                        <td>${m.model}</td>
+                        <td>${m.doc_type || '-'}</td>
+                        <td>${description}</td>
+                        <td><span class="status ${statusClass}">${statusText}</span></td>
+                        <td>${actions}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        document.getElementById('filter-brand').addEventListener('change', loadManuals);
+        document.getElementById('filter-status').addEventListener('change', loadManuals);
+
+        // Initial load
+        loadStats();
+        loadBrands();
+        loadManuals();
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            loadStats();
+            loadManuals();
+        }, 30000);
+    </script>
+</body>
+</html>
