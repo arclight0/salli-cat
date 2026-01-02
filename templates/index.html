@@ -331,12 +331,14 @@
                     <th>Brand</th>
                     <th>Model</th>
                     <th>Document Type</th>
+                    <th>Description</th>
+                    <th>Archived</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="manuals-table">
-                <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+                <tr><td colspan="8" class="empty-state">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -441,7 +443,7 @@
             const tbody = document.getElementById('manuals-table');
 
             if (manuals.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No manuals found. Run the scraper to populate data.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No manuals found. Run the scraper to populate data.</td></tr>';
                 return;
             }
 
@@ -461,6 +463,16 @@
                 const sourceClass = m.source || 'manualslib';
                 const sourceName = m.source || 'manualslib';
 
+                // Archived status indicator (Yes = archived, No = checked but not archived, ? = never checked)
+                let archivedIcon;
+                if (m.archived) {
+                    archivedIcon = '<span style="color:#22c55e">Yes</span>';
+                } else if (m.archive_checked_at) {
+                    archivedIcon = '<span style="color:#ef4444">No</span>';
+                } else {
+                    archivedIcon = '<span style="color:#999">?</span>';
+                }
+
                 let actions = `<a href="${m.manual_url}" target="_blank">View</a>`;
                 if (m.downloaded) {
                     actions += ` | <a href="/download/${m.id}">Download</a>`;
@@ -475,6 +487,8 @@
                         <td class="brand-col">${m.brand}</td>
                         <td>${m.model}</td>
                         <td>${m.doc_type || '-'}</td>
+                        <td>${m.doc_description || '-'}</td>
+                        <td>${archivedIcon}</td>
                         <td><span class="status ${statusClass}">${statusText}</span></td>
                         <td>${actions}</td>
                     </tr>

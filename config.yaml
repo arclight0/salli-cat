@@ -3,6 +3,19 @@ brands:
   - sharp
   - panasonic
   - sony
+
+# Categories to scrape for each brand (used when not using discovered brands)
+# These are the URL slug suffixes, e.g. "tv" -> /brand/rca/tv.html
+# Common TV-related categories:
+#   - tv              (standalone TVs)
+#   - tv-dvd-combo    (TV/DVD combos)
+#   - tv-vcr-combo    (TV/VCR combos)
+#   - tv-vcr-dvd-combo (TV/VCR/DVD combos)
+categories:
+  - tv
+  - tv-dvd-combo
+  - tv-vcr-combo
+
 download_dir: ./downloads
 
 # Manualzz catalog URLs to scrape

@@ -13,8 +13,10 @@ A Python-based scraper to download TV manuals from multiple sources (ManualsLib,
 manualslib-scraper/
 ├── pyproject.toml        # Project config and dependencies
 ├── config.yaml           # Brand list and URL configuration
+├── Procfile              # Process definitions for honcho
 ├── scraper.py            # ManualsLib Playwright scraper
 ├── manualzz_scraper.py   # Manualzz Playwright scraper
+├── archive_checker.py    # Background archive.org checker
 ├── database.py           # SQLite database layer
 ├── dashboard.py          # Flask web dashboard
 ├── templates/
@@ -107,9 +109,43 @@ uv run python dashboard.py
 
 Then open http://localhost:5000 in your browser.
 
+### Running the Archive.org Checker
+
+The archive checker runs as a background process, slowly checking if manuals already exist on archive.org. This pre-identifies archived manuals so they can be skipped during downloads.
+
+```bash
+# Check all pending manuals once (with default rate limiting)
+uv run python archive_checker.py
+
+# Run continuously, checking new manuals as they appear
+uv run python archive_checker.py --continuous
+
+# Check with faster rate (be careful not to hit rate limits)
+uv run python archive_checker.py --delay-min 2 --delay-max 5
+
+# Just show current statistics
+uv run python archive_checker.py --stats
+```
+
+### Running Multiple Processes with Honcho
+
+Use the `Procfile` to run the dashboard and archive checker together:
+
+```bash
+# Install dependencies (includes honcho)
+uv sync
+
+# Run all processes defined in Procfile
+uv run honcho start
+
+# Or run individual processes
+uv run honcho start dashboard
+uv run honcho start archive_checker
+```
+
 ## Configuration
 
-Edit `config.yaml` to configure brands and catalog URLs:
+Edit `config.yaml` to configure brands, categories, and catalog URLs:
 
 ```yaml
 # ManualsLib brands (slug from URL)
@@ -120,6 +156,13 @@ brands:
   - samsung
   - lg
 
+# Categories to scrape for each brand (used when not using discovered brands)
+# These are the URL slug suffixes, e.g. "tv" -> /brand/rca/tv.html
+categories:
+  - tv              # standalone TVs
+  - tv-dvd-combo    # TV/DVD combos
+  - tv-vcr-combo    # TV/VCR combos
+
 download_dir: ./downloads
 
 # Manualzz catalog URLs to scrape
@@ -129,6 +172,7 @@ manualzz_urls:
 ```
 
 - **brands**: ManualsLib brand slugs (e.g., `https://www.manualslib.com/brand/rca/tv.html`)
+- **categories**: Category slugs to scrape for each brand. When using `--use-discovered`, the discovered category URLs are used instead.
 - **manualzz_urls**: Direct catalog URLs from manualzz.com
 
 ## Captcha Handling

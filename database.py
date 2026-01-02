@@ -77,6 +77,7 @@ def init_db():
         ("file_size", "INTEGER"),
         ("scraped_at", "TEXT"),
         ("downloaded_at", "TEXT"),
+        ("archive_checked_at", "TEXT"),
     ]:
         try:
             cursor.execute(f"ALTER TABLE manuals ADD COLUMN {col} {coltype}")
@@ -260,6 +261,90 @@ def update_manualslib_id(manual_id: int, manualslib_id: str):
     """, (manualslib_id, manual_id))
     conn.commit()
     conn.close()
+
+
+def get_manuals_needing_archive_check(limit: int = 100) -> list[dict]:
+    """Get manuals that have a manualslib_id but haven't been checked on archive.org recently.
+
+    Returns manuals where:
+    - manualslib_id is set (so we can check archive.org)
+    - archived = 0 (not already marked as archived)
+    - downloaded = 0 (not already downloaded locally)
+    - archive_checked_at is NULL or older than 7 days
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM manuals
+        WHERE manualslib_id IS NOT NULL
+          AND archived = 0
+          AND downloaded = 0
+          AND (archive_checked_at IS NULL
+               OR datetime(archive_checked_at) < datetime('now', '-7 days'))
+        ORDER BY archive_checked_at ASC NULLS FIRST
+        LIMIT ?
+    """, (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def update_archive_checked(manual_id: int, is_archived: bool, archive_url: str = None):
+    """Update the archive check status for a manual."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    checked_at = datetime.now().isoformat()
+    if is_archived and archive_url:
+        cursor.execute("""
+            UPDATE manuals
+            SET archived = 1, archive_url = ?, archive_checked_at = ?
+            WHERE id = ?
+        """, (archive_url, checked_at, manual_id))
+    else:
+        cursor.execute("""
+            UPDATE manuals
+            SET archive_checked_at = ?
+            WHERE id = ?
+        """, (checked_at, manual_id))
+    conn.commit()
+    conn.close()
+
+
+def get_archive_check_stats() -> dict:
+    """Get statistics about archive checking progress."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Total with manualslib_id (checkable)
+    cursor.execute("SELECT COUNT(*) FROM manuals WHERE manualslib_id IS NOT NULL")
+    total_checkable = cursor.fetchone()[0]
+
+    # Already archived
+    cursor.execute("SELECT COUNT(*) FROM manuals WHERE archived = 1")
+    archived = cursor.fetchone()[0]
+
+    # Checked but not archived
+    cursor.execute("""
+        SELECT COUNT(*) FROM manuals
+        WHERE archive_checked_at IS NOT NULL AND archived = 0
+    """)
+    checked_not_archived = cursor.fetchone()[0]
+
+    # Never checked
+    cursor.execute("""
+        SELECT COUNT(*) FROM manuals
+        WHERE manualslib_id IS NOT NULL AND archive_checked_at IS NULL AND archived = 0
+    """)
+    never_checked = cursor.fetchone()[0]
+
+    conn.close()
+
+    return {
+        "total_checkable": total_checkable,
+        "archived": archived,
+        "checked_not_archived": checked_not_archived,
+        "never_checked": never_checked,
+    }
 
 
 def get_all_manuals(brand: str = None, downloaded: bool = None, source: str = None) -> list[dict]:
