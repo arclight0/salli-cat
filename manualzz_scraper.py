@@ -36,7 +36,15 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-def random_delay(min_sec: float = 2.0, max_sec: float = 5.0):
+# Global delay settings (updated from config in main())
+DELAY_MIN = 2.0
+DELAY_MAX = 5.0
+
+
+def random_delay(min_sec: float = None, max_sec: float = None):
+    """Sleep for a random delay. Uses global DELAY_MIN/MAX if not specified."""
+    min_sec = min_sec if min_sec is not None else DELAY_MIN
+    max_sec = max_sec if max_sec is not None else DELAY_MAX
     delay = random.uniform(min_sec, max_sec)
     time.sleep(delay)
 
@@ -405,7 +413,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
     return None
 
 
-def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True, extension_path: Path = None, browser: str = "chromium"):
+def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True, extension_path: Path = None, browser: str = "chromium", use_stealth: bool = False, use_proxy: bool = False):
     """Main scraping function for manualzz."""
     database.init_db()
 
@@ -416,6 +424,7 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
             extension_path=extension_path,
             headless=False,
             browser=browser,
+            use_proxy=use_proxy,
         )
 
         # Persistent context may already have pages open, use the first one or create new
@@ -424,8 +433,9 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
         else:
             page = context.new_page()
 
-        # Apply stealth patches to avoid fingerprint detection
-        apply_stealth(page)
+        # Apply stealth patches to avoid fingerprint detection (if enabled)
+        if use_stealth:
+            apply_stealth(page)
 
         # If no extension loaded, use route-based ad blocking as fallback
         if not extension_loaded:
@@ -492,6 +502,12 @@ def main():
     download_dir = Path(config.get("download_dir", "./downloads")).resolve()
     download_dir.mkdir(parents=True, exist_ok=True)
 
+    # Set delay values from config
+    global DELAY_MIN, DELAY_MAX
+    DELAY_MIN = config.get("delay_min", 2.0)
+    DELAY_MAX = config.get("delay_max", 5.0)
+    logger.info(f"Request delays: {DELAY_MIN}-{DELAY_MAX} seconds")
+
     database.init_db()
 
     if args.clear:
@@ -514,8 +530,10 @@ def main():
         logger.info("No uBlock Origin extension found - will use route-based ad blocking")
         logger.info("To use uBlock Origin, set 'ublock_origin_path' in config.yaml or place extension in ./extensions/ublock_origin/")
 
-    # Get browser type from config
+    # Get browser settings from config
     browser_type = config.get("browser", "chromium")
+    use_stealth = config.get("stealth", False)
+    use_proxy = config.get("use_proxy", False)
 
     if args.download_only:
         # Only download pending manuals
@@ -526,6 +544,7 @@ def main():
                 extension_path=extension_path,
                 headless=False,
                 browser=browser_type,
+                use_proxy=use_proxy,
             )
 
             # Persistent context may already have pages open
@@ -534,8 +553,9 @@ def main():
             else:
                 page = context.new_page()
 
-            # Apply stealth patches to avoid fingerprint detection
-            apply_stealth(page)
+            # Apply stealth patches to avoid fingerprint detection (if enabled)
+            if use_stealth:
+                apply_stealth(page)
 
             # If no extension loaded, use route-based ad blocking as fallback
             if not extension_loaded:
@@ -566,7 +586,7 @@ def main():
             finally:
                 context.close()
     else:
-        scrape_manualzz(catalog_urls, download_dir, download=not args.scrape_only, extension_path=extension_path, browser=browser_type)
+        scrape_manualzz(catalog_urls, download_dir, download=not args.scrape_only, extension_path=extension_path, browser=browser_type, use_stealth=use_stealth, use_proxy=use_proxy)
 
 
 if __name__ == "__main__":

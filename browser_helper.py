@@ -6,22 +6,29 @@ import os
 import tempfile
 from pathlib import Path
 
+from dotenv import load_dotenv
 from playwright.sync_api import BrowserContext, Playwright, Page
 from playwright_stealth import Stealth
+
+# Load environment variables from .env file
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
-def get_web_unlocker_proxy() -> dict | None:
+def get_proxy_config() -> dict | None:
     """
-    Get Bright Data Web Unlocker proxy config from environment variables.
+    Get proxy config from environment variables.
+
+    Works with any HTTP proxy (Oxylabs, Bright Data, etc.)
+    Set PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS in .env
 
     Returns a proxy dict for Playwright, or None if not configured.
     """
-    host = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_HOST")
-    port = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_PORT")
-    user = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_USER")
-    password = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_PASS")
+    host = os.environ.get("PROXY_HOST")
+    port = os.environ.get("PROXY_PORT")
+    user = os.environ.get("PROXY_USER")
+    password = os.environ.get("PROXY_PASS")
 
     if host and port and user and password:
         return {
@@ -29,6 +36,7 @@ def get_web_unlocker_proxy() -> dict | None:
             "username": user,
             "password": password,
         }
+
     return None
 
 # Common ad-blocking patterns as fallback
@@ -131,9 +139,9 @@ def launch_browser_with_extension(
         logger.warning(f"Extensions are only supported in Chromium, not {browser}")
 
     # Get proxy configuration
-    proxy = get_web_unlocker_proxy() if use_proxy else None
+    proxy = get_proxy_config() if use_proxy else None
     if proxy:
-        logger.info(f"Using Bright Data Web Unlocker proxy: {proxy['server']}")
+        logger.info(f"Browser using proxy: {proxy['server']}")
 
     # Launch persistent context
     context = browser_type.launch_persistent_context(

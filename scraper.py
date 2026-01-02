@@ -81,7 +81,15 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
-def random_delay(min_sec: float = 2.0, max_sec: float = 5.0):
+# Global delay settings (updated from config in main())
+DELAY_MIN = 2.0
+DELAY_MAX = 5.0
+
+
+def random_delay(min_sec: float = None, max_sec: float = None):
+    """Sleep for a random delay. Uses global DELAY_MIN/MAX if not specified."""
+    min_sec = min_sec if min_sec is not None else DELAY_MIN
+    max_sec = max_sec if max_sec is not None else DELAY_MAX
     delay = random.uniform(min_sec, max_sec)
     time.sleep(delay)
 
@@ -456,12 +464,12 @@ def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT, captcha_
     return False
 
 
-def get_datacenter_proxy_url() -> str | None:
-    """Get Bright Data datacenter proxy URL from environment variables."""
-    host = os.environ.get("BRIGHTDATA_DC_HOST")
-    port = os.environ.get("BRIGHTDATA_DC_PORT")
-    user = os.environ.get("BRIGHTDATA_DC_USER")
-    password = os.environ.get("BRIGHTDATA_DC_PASS")
+def get_proxy_url() -> str | None:
+    """Get proxy URL from environment variables (for urllib requests)."""
+    host = os.environ.get("PROXY_HOST")
+    port = os.environ.get("PROXY_PORT")
+    user = os.environ.get("PROXY_USER")
+    password = os.environ.get("PROXY_PASS")
 
     if host and port and user and password:
         return f"http://{user}:{password}@{host}:{port}"
@@ -487,7 +495,7 @@ def download_file_to_temp(url: str, use_proxy: bool = True) -> tuple[Path, str] 
 
     try:
         # Set up proxy if configured
-        proxy_url = get_datacenter_proxy_url() if use_proxy else None
+        proxy_url = get_proxy_url() if use_proxy else None
         if proxy_url:
             proxy_handler = urllib.request.ProxyHandler({
                 'http': proxy_url,
@@ -565,7 +573,19 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, ca
     download_btn.click()
     random_delay(1, 2)
 
-    # Check for captcha
+    # Wait for reCAPTCHA to fully load before proceeding
+    logger.info("Waiting for reCAPTCHA to load...")
+    try:
+        # Wait for the reCAPTCHA iframe to appear and be ready
+        page.wait_for_selector('iframe[src*="recaptcha"]', timeout=30000)
+        # Give it a moment to fully initialize
+        random_delay(1, 2)
+        logger.info("reCAPTCHA loaded")
+    except Exception as e:
+        logger.warning(f"reCAPTCHA did not load within timeout: {e}")
+        # Continue anyway - maybe there's no captcha on this page
+
+    # Check for captcha and solve it
     captcha_frame = page.query_selector('iframe[src*="recaptcha"]')
     if captcha_frame:
         if not wait_for_captcha_solved(page, captcha_solver=captcha_solver):
@@ -755,6 +775,12 @@ def main():
     download_dir = Path(config.get("download_dir", "./downloads")).resolve()
     download_dir.mkdir(parents=True, exist_ok=True)
 
+    # Set delay values from config
+    global DELAY_MIN, DELAY_MAX
+    DELAY_MIN = config.get("delay_min", 2.0)
+    DELAY_MAX = config.get("delay_max", 5.0)
+    logger.info(f"Request delays: {DELAY_MIN}-{DELAY_MAX} seconds")
+
     # Initialize 2captcha solver if API key is configured
     # Check environment variable first, then fall back to config.yaml
     captcha_solver = None
@@ -770,9 +796,12 @@ def main():
         logger.info("2captcha not configured - will use manual captcha solving")
 
     # Log proxy configuration
-    dc_proxy = get_datacenter_proxy_url()
-    if dc_proxy:
-        logger.info("Bright Data datacenter proxy configured for downloads")
+    proxy_url = get_proxy_url()
+    if proxy_url:
+        # Extract just the host:port for logging (don't log credentials)
+        host = os.environ.get("PROXY_HOST")
+        port = os.environ.get("PROXY_PORT")
+        logger.info(f"Proxy configured for downloads: {host}:{port}")
 
     database.init_db()
 
@@ -792,6 +821,8 @@ def main():
     # Get browser and extension settings
     project_dir = Path(__file__).parent
     browser_type = config.get("browser", "chromium")
+    use_stealth = config.get("stealth", False)
+    use_proxy = config.get("use_proxy", False)
     extension_path = get_extension_path(config, project_dir)
 
     if extension_path:
@@ -806,6 +837,7 @@ def main():
             extension_path=extension_path,
             headless=False,  # Extensions may not work in headless mode
             browser=browser_type,
+            use_proxy=use_proxy,
         )
 
         # Persistent context may already have pages open, use the first one or create new
@@ -814,8 +846,9 @@ def main():
         else:
             page = context.new_page()
 
-        # Apply stealth patches to avoid fingerprint detection
-        apply_stealth(page)
+        # Apply stealth patches to avoid fingerprint detection (if enabled)
+        if use_stealth:
+            apply_stealth(page)
 
         # If no extension loaded, use route-based ad blocking as fallback
         if not extension_loaded:

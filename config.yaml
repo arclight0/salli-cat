@@ -20,7 +20,19 @@ download_dir: ./downloads
 
 # Browser to use: chromium, firefox, or webkit
 # Note: Extensions (like uBlock Origin) only work with chromium
-browser: firefox
+browser: chromium
+
+# Enable stealth mode to avoid fingerprint detection (default: false)
+# May interfere with some sites - disable if you have issues
+stealth: true
+
+# Use proxy for browser (default: false)
+# Requires PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS in .env
+use_proxy: false
+
+# Delay between requests in seconds (increase to avoid IP bans)
+delay_min: 3
+delay_max: 8
 
 # 2captcha API key: Set TWOCAPTCHA_API_KEY in .env file
 # See .env.example for details
