@@ -89,7 +89,7 @@ def scrape_catalog_page(page: Page, catalog_url: str) -> int:
 
     while current_url:
         logger.info(f"Scraping catalog page {page_num}: {current_url}")
-        page.goto(current_url, wait_until="networkidle")
+        page.goto(current_url, wait_until="domcontentloaded")
         random_delay(1, 2)
 
         # Find all manual/document listings (thumbnails)
@@ -222,7 +222,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
     """Download a single manual from manualzz. Returns (file_path, sha1, md5, file_size) if successful, None otherwise."""
     logger.info(f"Downloading: {manual['title']} - {manual['manual_url']}")
 
-    page.goto(manual["manual_url"], wait_until="networkidle")
+    page.goto(manual["manual_url"], wait_until="domcontentloaded")
     random_delay(1, 2)
 
     # Look for download button with bi-download class
@@ -248,7 +248,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
         if manualzz_id:
             download_page_url = f"{BASE_URL}/download/{manualzz_id}"
             logger.info(f"Navigating to download page: {download_page_url}")
-            page.goto(download_page_url, wait_until="networkidle")
+            page.goto(download_page_url, wait_until="domcontentloaded")
             random_delay(1, 2)
 
     # Now we should be on the download page with captcha

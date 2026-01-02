@@ -126,7 +126,7 @@ def discover_brands(page: Page) -> tuple[list[dict], set[str]]:
 
     # First, get all the letter/number index links
     logger.info("Discovering brands with TV category...")
-    page.goto(f"{BASE_URL}/brand/", wait_until="networkidle")
+    page.goto(f"{BASE_URL}/brand/", wait_until="domcontentloaded")
     random_delay(1, 2)
 
     # Find all index links in the bmap div
@@ -147,7 +147,7 @@ def discover_brands(page: Page) -> tuple[list[dict], set[str]]:
 
         while current_url:
             logger.info(f"Scanning: {current_url} (page {page_num})")
-            page.goto(current_url, wait_until="networkidle")
+            page.goto(current_url, wait_until="domcontentloaded")
             random_delay(1, 2)
 
             # Find all brand rows
@@ -272,7 +272,7 @@ def scrape_category_listing(page: Page, brand: str, category_url: str, category_
             url = f"{base_url}?p={page_num}"
 
         logger.info(f"Scraping {brand} [{cat_display}] page {page_num}: {url}")
-        page.goto(url, wait_until="networkidle")
+        page.goto(url, wait_until="domcontentloaded")
         random_delay(1, 2)
 
         # Find all model rows
@@ -400,7 +400,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str) ->
     """Download a single manual. Returns (file_path, sha1, md5, file_size) if successful, None otherwise."""
     logger.info(f"Downloading: {manual['model']} - {manual['url']}")
 
-    page.goto(manual["url"], wait_until="networkidle")
+    page.goto(manual["url"], wait_until="domcontentloaded")
     random_delay(1, 2)
 
     # Look for download button
