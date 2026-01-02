@@ -28,7 +28,7 @@ stealth: true
 
 # Use proxy for browser (default: false)
 # Requires PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS in .env
-use_proxy: false
+use_proxy: true
 
 # Delay between requests in seconds (increase to avoid IP bans)
 delay_min: 3

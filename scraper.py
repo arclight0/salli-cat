@@ -476,7 +476,7 @@ def get_proxy_url() -> str | None:
     return None
 
 
-def download_file_to_temp(url: str, use_proxy: bool = True) -> tuple[Path, str] | None:
+def download_file_to_temp(url: str, use_proxy: bool = False) -> tuple[Path, str] | None:
     """
     Download a file to a temp location.
 
@@ -485,7 +485,8 @@ def download_file_to_temp(url: str, use_proxy: bool = True) -> tuple[Path, str] 
 
     Args:
         url: URL to download
-        use_proxy: If True and datacenter proxy is configured, use it
+        use_proxy: If True, use configured proxy. Defaults to False since signed
+                   download URLs work without proxy and proxies are metered by bandwidth.
     """
     import tempfile
 
@@ -795,14 +796,6 @@ def main():
     else:
         logger.info("2captcha not configured - will use manual captcha solving")
 
-    # Log proxy configuration
-    proxy_url = get_proxy_url()
-    if proxy_url:
-        # Extract just the host:port for logging (don't log credentials)
-        host = os.environ.get("PROXY_HOST")
-        port = os.environ.get("PROXY_PORT")
-        logger.info(f"Proxy configured for downloads: {host}:{port}")
-
     database.init_db()
 
     if args.clear_all:
@@ -824,6 +817,14 @@ def main():
     use_stealth = config.get("stealth", False)
     use_proxy = config.get("use_proxy", False)
     extension_path = get_extension_path(config, project_dir)
+
+    # Log proxy configuration (proxy is only used for browser, not file downloads)
+    if use_proxy:
+        host = os.environ.get("PROXY_HOST")
+        port = os.environ.get("PROXY_PORT")
+        if host and port:
+            logger.info(f"Proxy configured for browser: {host}:{port}")
+            logger.info("Note: File downloads use direct connection (no proxy) to save bandwidth")
 
     if extension_path:
         logger.info(f"Using uBlock Origin extension: {extension_path}")
