@@ -191,6 +191,53 @@ def setup_route_ad_blocking(page: Page) -> None:
     logger.info("Route-based ad blocking enabled")
 
 
+def setup_bandwidth_saving(page: Page) -> None:
+    """
+    Block bandwidth-heavy domains and ads to save proxy costs.
+
+    Blocks static content (images, thumbnails) and ad networks.
+    """
+    blocked_domains = [
+        # ManualsLib static content
+        "static-data2.manualslib.com",
+        # Google Ads
+        "doubleclick.net",
+        "googlesyndication.com",
+        "googleadservices.com",
+        "google-analytics.com",
+        "googletagmanager.com",
+        "googletagservices.com",
+        "adservice.google.com",
+        "pagead2.googlesyndication.com",
+        "adsensecustomsearchads.com",
+        # Other ad networks
+        "adnxs.com",
+        "adsrvr.org",
+        "amazon-adsystem.com",
+        "facebook.net",
+        "moatads.com",
+        "rubiconproject.com",
+        "pubmatic.com",
+        "criteo.com",
+        "outbrain.com",
+        "taboola.com",
+    ]
+
+    def handle_route(route):
+        url = route.request.url
+        for domain in blocked_domains:
+            if domain in url:
+                logger.debug(f"Blocking: {url[:60]}...")
+                route.abort()
+                return
+        route.continue_()
+
+    # Match all requests and filter in the handler
+    page.route("**/*", handle_route)
+
+    logger.info("Bandwidth-saving mode enabled (blocking static content and ads)")
+
+
 def get_extension_path(config: dict, project_dir: Path) -> Path | None:
     """
     Get the extension path from config or default location.

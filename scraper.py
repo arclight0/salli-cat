@@ -20,7 +20,7 @@ from playwright.sync_api import sync_playwright, Page
 load_dotenv()
 
 import database
-from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking, apply_stealth
+from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking, apply_stealth, setup_bandwidth_saving
 from captcha_solver import TwoCaptchaSolver, extract_sitekey_from_page, inject_captcha_response
 
 logging.basicConfig(
@@ -856,6 +856,9 @@ def main():
             setup_route_ad_blocking(page)
         else:
             logger.info("uBlock Origin extension loaded for ad blocking")
+
+        # Block bandwidth-heavy static content to save proxy costs
+        setup_bandwidth_saving(page)
 
         try:
             # Brand discovery mode
