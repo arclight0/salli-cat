@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ManualsLib Scraper Dashboard</title>
+    <title>TV Manual Scraper Dashboard</title>
     <style>
         * {
             box-sizing: border-box;
@@ -197,11 +197,64 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        .source-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+        .source-badge.manualslib {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .source-badge.manualzz {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .source-stats {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .source-stats h2 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .source-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .source-row:last-child {
+            border-bottom: none;
+        }
+        .source-name {
+            width: 120px;
+            font-weight: 500;
+        }
+        .source-counts {
+            display: flex;
+            gap: 15px;
+            font-size: 14px;
+        }
+        .source-counts span {
+            color: #666;
+        }
+        .source-counts .num {
+            font-weight: 600;
+            color: #333;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>ManualsLib Scraper Dashboard</h1>
+        <h1>TV Manual Scraper Dashboard</h1>
 
         <div class="stats" id="stats">
             <div class="stat-card">
@@ -230,12 +283,24 @@
             </div>
         </div>
 
+        <div class="source-stats">
+            <h2>Stats by Source</h2>
+            <div id="source-rows"></div>
+        </div>
+
         <div class="brand-stats" id="brand-stats">
             <h2>Progress by Brand</h2>
             <div id="brand-bars"></div>
         </div>
 
         <div class="filters">
+            <label>Source:</label>
+            <select id="filter-source">
+                <option value="">All Sources</option>
+                <option value="manualslib">ManualsLib</option>
+                <option value="manualzz">Manualzz</option>
+            </select>
+
             <label>Brand:</label>
             <select id="filter-brand">
                 <option value="">All Brands</option>
@@ -253,17 +318,19 @@
         <div class="actions-bar">
             <h3>Database:</h3>
             <button class="btn btn-danger" onclick="clearBrands()">Clear Brands</button>
-            <button class="btn btn-danger" onclick="clearManuals()">Clear Manuals</button>
-            <button class="btn btn-danger" onclick="clearAll()">Clear All</button>
+            <button class="btn btn-danger" onclick="clearManuals()">Clear All Manuals</button>
+            <button class="btn btn-danger" onclick="clearManualsBySource('manualslib')">Clear ManualsLib</button>
+            <button class="btn btn-danger" onclick="clearManualsBySource('manualzz')">Clear Manualzz</button>
+            <button class="btn btn-danger" onclick="clearAll()">Clear Everything</button>
         </div>
 
         <table>
             <thead>
                 <tr>
+                    <th>Source</th>
                     <th>Brand</th>
                     <th>Model</th>
                     <th>Document Type</th>
-                    <th>Description</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -276,13 +343,36 @@
 
     <script>
         async function loadStats() {
-            const res = await fetch('/api/stats');
+            const source = document.getElementById('filter-source').value;
+            let url = '/api/stats';
+            if (source) url += `?source=${source}`;
+
+            const res = await fetch(url);
             const stats = await res.json();
 
             document.getElementById('total').textContent = stats.total;
             document.getElementById('downloaded').textContent = stats.downloaded;
             document.getElementById('archived').textContent = stats.archived;
             document.getElementById('pending').textContent = stats.pending;
+
+            // Source breakdown
+            const sourceRowsHtml = (stats.by_source || []).map(s => {
+                const pending = s.total - s.downloaded - s.archived;
+                return `
+                    <div class="source-row">
+                        <span class="source-name">
+                            <span class="source-badge ${s.source}">${s.source}</span>
+                        </span>
+                        <div class="source-counts">
+                            <span>Total: <span class="num">${s.total}</span></span>
+                            <span>Downloaded: <span class="num" style="color:#22c55e">${s.downloaded}</span></span>
+                            <span>Archived: <span class="num" style="color:#3b82f6">${s.archived}</span></span>
+                            <span>Pending: <span class="num" style="color:#f59e0b">${pending}</span></span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('source-rows').innerHTML = sourceRowsHtml || '<p>No data yet</p>';
 
             const barsHtml = stats.by_brand.map(b => {
                 const done = b.downloaded + b.archived;
@@ -309,7 +399,11 @@
         }
 
         async function loadBrands() {
-            const res = await fetch('/api/brands');
+            const source = document.getElementById('filter-source').value;
+            let url = '/api/brands';
+            if (source) url += `?source=${source}`;
+
+            const res = await fetch(url);
             const brands = await res.json();
 
             const select = document.getElementById('filter-brand');
@@ -332,10 +426,12 @@
         }
 
         async function loadManuals() {
+            const source = document.getElementById('filter-source').value;
             const brand = document.getElementById('filter-brand').value;
             const status = document.getElementById('filter-status').value;
 
             let url = '/api/manuals?';
+            if (source) url += `source=${source}&`;
             if (brand) url += `brand=${encodeURIComponent(brand)}&`;
             if (status) url += `status=${status}`;
 
@@ -362,6 +458,9 @@
                     statusText = 'Pending';
                 }
 
+                const sourceClass = m.source || 'manualslib';
+                const sourceName = m.source || 'manualslib';
+
                 let actions = `<a href="${m.manual_url}" target="_blank">View</a>`;
                 if (m.downloaded) {
                     actions += ` | <a href="/download/${m.id}">Download</a>`;
@@ -370,14 +469,12 @@
                     actions += ` | <a href="${m.archive_url}" target="_blank">Archive.org</a>`;
                 }
 
-                const description = m.doc_description || '';
-
                 return `
                     <tr>
+                        <td><span class="source-badge ${sourceClass}">${sourceName}</span></td>
                         <td class="brand-col">${m.brand}</td>
                         <td>${m.model}</td>
                         <td>${m.doc_type || '-'}</td>
-                        <td>${description}</td>
                         <td><span class="status ${statusClass}">${statusText}</span></td>
                         <td>${actions}</td>
                     </tr>
@@ -388,36 +485,44 @@
         async function clearBrands() {
             if (!confirm('Are you sure you want to clear all discovered brands?')) return;
             await fetch('/api/clear-brands', { method: 'POST' });
-            loadStats();
-            loadBrandStats();
-            loadBrands();
+            refreshAll();
         }
 
         async function clearManuals() {
             if (!confirm('Are you sure you want to clear all manuals?')) return;
             await fetch('/api/clear-manuals', { method: 'POST' });
-            loadStats();
-            loadManuals();
-            loadBrands();
+            refreshAll();
+        }
+
+        async function clearManualsBySource(source) {
+            if (!confirm(`Are you sure you want to clear all ${source} manuals?`)) return;
+            await fetch(`/api/clear-manuals?source=${source}`, { method: 'POST' });
+            refreshAll();
         }
 
         async function clearAll() {
             if (!confirm('Are you sure you want to clear ALL data (brands and manuals)?')) return;
             await fetch('/api/clear-all', { method: 'POST' });
+            refreshAll();
+        }
+
+        function refreshAll() {
             loadStats();
             loadBrandStats();
             loadBrands();
             loadManuals();
         }
 
+        document.getElementById('filter-source').addEventListener('change', () => {
+            loadStats();
+            loadBrands();
+            loadManuals();
+        });
         document.getElementById('filter-brand').addEventListener('change', loadManuals);
         document.getElementById('filter-status').addEventListener('change', loadManuals);
 
         // Initial load
-        loadStats();
-        loadBrandStats();
-        loadBrands();
-        loadManuals();
+        refreshAll();
 
         // Auto-refresh every 30 seconds
         setInterval(() => {

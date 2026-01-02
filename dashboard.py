@@ -16,8 +16,9 @@ def index():
 def api_manuals():
     brand = request.args.get("brand")
     status = request.args.get("status")
+    source = request.args.get("source")
 
-    manuals = database.get_all_manuals(brand=brand)
+    manuals = database.get_all_manuals(brand=brand, source=source)
 
     # Filter by status
     if status == "downloaded":
@@ -32,24 +33,37 @@ def api_manuals():
 
 @app.route("/api/stats")
 def api_stats():
-    stats = database.get_stats()
+    source = request.args.get("source")
+    stats = database.get_stats(source=source)
     return jsonify(stats)
 
 
 @app.route("/api/brands")
 def api_brands():
     """Get list of all brands (from both manuals and discovered brands)."""
+    source = request.args.get("source")
+
     # Get brands from manuals table
-    manuals = database.get_all_manuals()
+    manuals = database.get_all_manuals(source=source)
     manual_brands = set(m["brand"] for m in manuals)
 
-    # Get discovered brands from brands table
-    discovered = database.get_all_brands()
-    discovered_brands = set(b["slug"] for b in discovered)
+    # Get discovered brands from brands table (only for manualslib or no source filter)
+    if not source or source == "manualslib":
+        discovered = database.get_all_brands()
+        discovered_brands = set(b["slug"] for b in discovered)
+        all_brands = sorted(manual_brands | discovered_brands)
+    else:
+        all_brands = sorted(manual_brands)
 
-    # Combine and sort
-    all_brands = sorted(manual_brands | discovered_brands)
     return jsonify(all_brands)
+
+
+@app.route("/api/sources")
+def api_sources():
+    """Get list of all sources in the database."""
+    stats = database.get_stats()
+    sources = [s["source"] for s in stats.get("by_source", [])]
+    return jsonify(sources)
 
 
 @app.route("/api/discovered-brands")
@@ -76,8 +90,13 @@ def api_clear_brands():
 @app.route("/api/clear-manuals", methods=["POST"])
 def api_clear_manuals():
     """Clear all manuals from database."""
-    database.clear_all()
-    return jsonify({"status": "ok", "message": "Manuals cleared"})
+    source = request.args.get("source")
+    if source:
+        database.clear_manuals_by_source(source)
+        return jsonify({"status": "ok", "message": f"{source} manuals cleared"})
+    else:
+        database.clear_all()
+        return jsonify({"status": "ok", "message": "All manuals cleared"})
 
 
 @app.route("/api/clear-all", methods=["POST"])

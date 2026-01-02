@@ -69,6 +69,9 @@ def init_db():
         ("model_url", "TEXT"),
         ("model_id", "TEXT"),
         ("doc_description", "TEXT"),
+        ("source", "TEXT DEFAULT 'manualslib'"),
+        ("source_id", "TEXT"),
+        ("category", "TEXT"),
     ]:
         try:
             cursor.execute(f"ALTER TABLE manuals ADD COLUMN {col} {coltype}")
@@ -79,6 +82,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_brand ON manuals(brand)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded ON manuals(downloaded)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_archived ON manuals(archived)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_source ON manuals(source)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_brands_slug ON brands(slug)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_brands_scraped ON brands(scraped)")
 
@@ -95,14 +99,17 @@ def add_manual(
     model_id: str = None,
     doc_type: str = None,
     doc_description: str = None,
+    source: str = "manualslib",
+    source_id: str = None,
+    category: str = None,
 ) -> int | None:
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO manuals (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id))
+            INSERT INTO manuals (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id, source, source_id, category)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (brand, model, model_url, model_id, doc_type, doc_description, manual_url, manualslib_id, source, source_id, category))
         conn.commit()
         return cursor.lastrowid
     except sqlite3.IntegrityError:
@@ -248,7 +255,7 @@ def update_manualslib_id(manual_id: int, manualslib_id: str):
     conn.close()
 
 
-def get_all_manuals(brand: str = None, downloaded: bool = None) -> list[dict]:
+def get_all_manuals(brand: str = None, downloaded: bool = None, source: str = None) -> list[dict]:
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -263,6 +270,10 @@ def get_all_manuals(brand: str = None, downloaded: bool = None) -> list[dict]:
         query += " AND downloaded = ?"
         params.append(1 if downloaded else 0)
 
+    if source:
+        query += " AND source = ?"
+        params.append(source)
+
     query += " ORDER BY brand, model"
 
     cursor.execute(query, params)
@@ -271,7 +282,7 @@ def get_all_manuals(brand: str = None, downloaded: bool = None) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def get_undownloaded_manuals(brand: str = None, include_archived: bool = False) -> list[dict]:
+def get_undownloaded_manuals(brand: str = None, include_archived: bool = False, source: str = None) -> list[dict]:
     """Get manuals that haven't been downloaded. By default excludes archived manuals."""
     conn = get_connection()
     cursor = conn.cursor()
@@ -286,6 +297,10 @@ def get_undownloaded_manuals(brand: str = None, include_archived: bool = False) 
         query += " AND brand = ?"
         params.append(brand)
 
+    if source:
+        query += " AND source = ?"
+        params.append(source)
+
     query += " ORDER BY brand, model"
 
     cursor.execute(query, params)
@@ -294,29 +309,50 @@ def get_undownloaded_manuals(brand: str = None, include_archived: bool = False) 
     return [dict(row) for row in rows]
 
 
-def get_stats() -> dict:
+def get_stats(source: str = None) -> dict:
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) as total FROM manuals")
+    source_filter = ""
+    params = []
+    if source:
+        source_filter = " WHERE source = ?"
+        params = [source]
+
+    cursor.execute(f"SELECT COUNT(*) as total FROM manuals{source_filter}", params)
     total = cursor.fetchone()["total"]
 
-    cursor.execute("SELECT COUNT(*) as downloaded FROM manuals WHERE downloaded = 1")
+    cursor.execute(f"SELECT COUNT(*) as downloaded FROM manuals WHERE downloaded = 1{' AND source = ?' if source else ''}", params)
     downloaded = cursor.fetchone()["downloaded"]
 
-    cursor.execute("SELECT COUNT(*) as archived FROM manuals WHERE archived = 1")
+    cursor.execute(f"SELECT COUNT(*) as archived FROM manuals WHERE archived = 1{' AND source = ?' if source else ''}", params)
     archived = cursor.fetchone()["archived"]
 
-    cursor.execute("""
+    by_brand_query = """
         SELECT brand,
                COUNT(*) as total,
                SUM(CASE WHEN downloaded = 1 THEN 1 ELSE 0 END) as downloaded,
                SUM(CASE WHEN archived = 1 THEN 1 ELSE 0 END) as archived
         FROM manuals
-        GROUP BY brand
-        ORDER BY brand
-    """)
+    """
+    if source:
+        by_brand_query += " WHERE source = ?"
+    by_brand_query += " GROUP BY brand ORDER BY brand"
+
+    cursor.execute(by_brand_query, params)
     by_brand = [dict(row) for row in cursor.fetchall()]
+
+    # Also get stats by source
+    cursor.execute("""
+        SELECT COALESCE(source, 'manualslib') as source,
+               COUNT(*) as total,
+               SUM(CASE WHEN downloaded = 1 THEN 1 ELSE 0 END) as downloaded,
+               SUM(CASE WHEN archived = 1 THEN 1 ELSE 0 END) as archived
+        FROM manuals
+        GROUP BY source
+        ORDER BY source
+    """)
+    by_source = [dict(row) for row in cursor.fetchall()]
 
     conn.close()
 
@@ -325,7 +361,8 @@ def get_stats() -> dict:
         "downloaded": downloaded,
         "archived": archived,
         "pending": total - downloaded - archived,
-        "by_brand": by_brand
+        "by_brand": by_brand,
+        "by_source": by_source,
     }
 
 
@@ -334,6 +371,15 @@ def clear_all():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM manuals")
+    conn.commit()
+    conn.close()
+
+
+def clear_manuals_by_source(source: str):
+    """Delete all manuals from a specific source."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM manuals WHERE source = ?", (source,))
     conn.commit()
     conn.close()
 

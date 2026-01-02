@@ -4,3 +4,8 @@ brands:
   - panasonic
   - sony
 download_dir: ./downloads
+
+# Manualzz catalog URLs to scrape
+manualzz_urls:
+  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs
+  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/monitors+CRT

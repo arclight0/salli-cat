@@ -1,20 +1,26 @@
-# ManualsLib TV Manual Scraper
+# TV Manual Scraper
 
-A Python-based scraper to download TV manuals from manualslib.com with a web dashboard for monitoring progress.
+A Python-based scraper to download TV manuals from multiple sources (ManualsLib, Manualzz) with a web dashboard for monitoring progress.
+
+## Supported Sources
+
+- **ManualsLib** (manualslib.com) - Brand discovery and TV manual scraping
+- **Manualzz** (manualzz.com) - CRT TV and monitor manual scraping
 
 ## Project Structure
 
 ```
 manualslib-scraper/
-├── pyproject.toml     # Project config and dependencies
-├── config.yaml        # Brand list configuration
-├── scraper.py         # Main Playwright scraper
-├── database.py        # SQLite database layer
-├── dashboard.py       # Flask web dashboard
+├── pyproject.toml        # Project config and dependencies
+├── config.yaml           # Brand list and URL configuration
+├── scraper.py            # ManualsLib Playwright scraper
+├── manualzz_scraper.py   # Manualzz Playwright scraper
+├── database.py           # SQLite database layer
+├── dashboard.py          # Flask web dashboard
 ├── templates/
-│   └── index.html     # Dashboard UI
-├── downloads/         # Downloaded PDFs (organized by brand)
-└── manuals.db         # SQLite database (created on first run)
+│   └── index.html        # Dashboard UI
+├── downloads/            # Downloaded PDFs (organized by source/brand)
+└── manuals.db            # SQLite database (created on first run)
 ```
 
 ## Setup
@@ -46,7 +52,7 @@ uv run python scraper.py --discover-brands
 uv run python scraper.py --use-discovered --scrape-only
 ```
 
-### Running the Scraper
+### Running the ManualsLib Scraper
 
 ```bash
 # Scrape all brands in config.yaml
@@ -64,8 +70,33 @@ uv run python scraper.py --scrape-only
 # Download pending manuals only (skip scraping)
 uv run python scraper.py --download-only
 
-# Clear database and start fresh
+# Clear manualslib records and start fresh
 uv run python scraper.py --clear --scrape-only
+
+# Clear discovered brands
+uv run python scraper.py --clear-brands
+
+# Clear everything (manuals and brands)
+uv run python scraper.py --clear-all
+```
+
+### Running the Manualzz Scraper
+
+```bash
+# Scrape catalog URLs from config.yaml
+uv run python manualzz_scraper.py
+
+# Scrape specific catalog URLs
+uv run python manualzz_scraper.py --urls "https://manualzz.com/catalog/..."
+
+# Scrape listings only (populate database, no downloads)
+uv run python manualzz_scraper.py --scrape-only
+
+# Download pending manuals only (skip scraping)
+uv run python manualzz_scraper.py --download-only
+
+# Clear manualzz records and start fresh
+uv run python manualzz_scraper.py --clear
 ```
 
 ### Running the Dashboard
@@ -78,9 +109,10 @@ Then open http://localhost:5000 in your browser.
 
 ## Configuration
 
-Edit `config.yaml` to add or remove brands:
+Edit `config.yaml` to configure brands and catalog URLs:
 
 ```yaml
+# ManualsLib brands (slug from URL)
 brands:
   - rca
   - sharp
@@ -89,9 +121,15 @@ brands:
   - lg
 
 download_dir: ./downloads
+
+# Manualzz catalog URLs to scrape
+manualzz_urls:
+  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs
+  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/monitors+CRT
 ```
 
-Brand names should match the URL slug on manualslib.com (e.g., `https://www.manualslib.com/brand/rca/tv.html`).
+- **brands**: ManualsLib brand slugs (e.g., `https://www.manualslib.com/brand/rca/tv.html`)
+- **manualzz_urls**: Direct catalog URLs from manualzz.com
 
 ## Captcha Handling
 
@@ -112,10 +150,12 @@ CAPTCHA DETECTED - Please solve it in the browser window
 ## Dashboard Features
 
 - **Summary Stats**: Total manuals, downloaded count, archived count, pending count
+- **Stats by Source**: Breakdown of manuals by source (ManualsLib, Manualzz)
 - **Progress by Brand**: Visual progress bars showing completion
-- **Manual Table**: Filterable list of all manuals
-- **Filters**: Filter by brand and download status
-- **Actions**: Links to view on manualslib, download locally, or view on archive.org
+- **Manual Table**: Filterable list of all manuals with source badges
+- **Filters**: Filter by source, brand, and download status
+- **Actions**: Links to view on source site, download locally, or view on archive.org
+- **Database Management**: Clear buttons for specific sources or all data
 - **Auto-Refresh**: Updates every 30 seconds
 
 ## Database Schema
@@ -136,12 +176,15 @@ SQLite database (`manuals.db`) with two tables:
 | Column | Type | Description |
 |--------|------|-------------|
 | id | INTEGER | Primary key |
-| brand | TEXT | Brand slug |
+| source | TEXT | Source site ("manualslib" or "manualzz") |
+| source_id | TEXT | ID from source site |
+| brand | TEXT | Brand name/slug |
 | model | TEXT | Model name/number |
 | model_url | TEXT | URL to model page |
 | model_id | TEXT | ManualsLib model ID |
 | doc_type | TEXT | Document type (e.g., "User Manual") |
 | doc_description | TEXT | Document description |
+| category | TEXT | Category (for manualzz) |
 | manual_url | TEXT | URL to manual page |
 | manualslib_id | TEXT | ManualsLib document ID |
 | downloaded | INTEGER | 0 = pending, 1 = downloaded |
@@ -158,7 +201,10 @@ If archived, it skips the download and records the archive URL.
 
 ## Downloaded Files
 
-PDFs are saved to `downloads/{brand}/{model}_{doc_type}.pdf`
+PDFs are saved organized by source and brand:
+
+- **ManualsLib**: `downloads/{brand}/{model}_{doc_type}.pdf`
+- **Manualzz**: `downloads/manualzz/{brand}/{title}.pdf`
 
 Example:
 ```
@@ -168,8 +214,13 @@ downloads/
 │   └── LED32A30RQ_User Manual.pdf
 ├── sharp/
 │   └── LC-50LB371U_Operation Manual.pdf
-└── panasonic/
-    └── TC-P50X5_Owner_s Manual.pdf
+├── panasonic/
+│   └── TC-P50X5_Owner_s Manual.pdf
+└── manualzz/
+    ├── Sony/
+    │   └── KV-27FS120 CRT Television.pdf
+    └── Panasonic/
+        └── CT-27SX12 Service Manual.pdf
 ```
 
 ## Resume Capability

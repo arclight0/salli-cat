@@ -177,15 +177,29 @@ def discover_brands(page: Page) -> tuple[list[dict], set[str]]:
 
                 if tv_categories:
                     seen_slugs.add(slug)
-                    brands.append({
+                    brand_info = {
                         "name": brand_name,
                         "slug": slug,
                         "brand_url": brand_url,
                         "tv_categories": ", ".join(tv_categories),
                         "tv_category_urls": ", ".join(tv_category_urls),
                         "all_categories": ", ".join(all_categories),
-                    })
-                    logger.info(f"Found TV brand: {brand_name} ({slug}) - Categories: {', '.join(tv_categories)}")
+                    }
+                    brands.append(brand_info)
+
+                    # Add to database immediately so progress is visible
+                    brand_id = database.add_brand(
+                        name=brand_info["name"],
+                        slug=brand_info["slug"],
+                        brand_url=brand_info["brand_url"],
+                        tv_categories=brand_info["tv_categories"],
+                        tv_category_urls=brand_info["tv_category_urls"],
+                        all_categories=brand_info["all_categories"],
+                    )
+                    if brand_id:
+                        logger.info(f"Added TV brand: {brand_name} ({slug}) - Categories: {', '.join(tv_categories)}")
+                    else:
+                        logger.info(f"Found TV brand (already in DB): {brand_name} ({slug})")
 
             # Check for next page in pagination
             next_page_link = page.query_selector('ul.pagination li.active + li a.plink')
@@ -204,8 +218,11 @@ def discover_brands(page: Page) -> tuple[list[dict], set[str]]:
     return brands, all_tv_related_categories
 
 
-def scrape_brand_listing(page: Page, brand: str) -> list[dict]:
+def scrape_brand_listing(page: Page, brand: str) -> int:
     """Scrape all manual links from a brand's TV listing pages.
+
+    Adds manuals to database immediately as they're found for real-time progress.
+    Returns the count of manuals found.
 
     HTML structure:
     <div class="row tabled">
@@ -220,9 +237,9 @@ def scrape_brand_listing(page: Page, brand: str) -> list[dict]:
         </div>
     </div>
     """
-    manuals = []
     seen_urls = set()
     page_num = 1
+    manual_count = 0
 
     while True:
         if page_num == 1:
@@ -276,15 +293,20 @@ def scrape_brand_listing(page: Page, brand: str) -> list[dict]:
                 # Extract manualslib ID from the manual URL
                 manualslib_id = extract_manualslib_id(manual_url)
 
-                manuals.append({
-                    "model": model_name,
-                    "model_url": model_url,
-                    "model_id": model_id,
-                    "manual_url": manual_url,
-                    "manualslib_id": manualslib_id,
-                    "doc_type": doc_type,
-                    "doc_description": doc_description,
-                })
+                # Add to database immediately for real-time progress
+                manual_id = database.add_manual(
+                    brand=brand,
+                    model=model_name,
+                    model_url=model_url,
+                    model_id=model_id,
+                    doc_type=doc_type,
+                    doc_description=doc_description,
+                    manual_url=manual_url,
+                    manualslib_id=manualslib_id,
+                )
+                if manual_id:
+                    logger.info(f"Added: {model_name} - {doc_type}")
+                manual_count += 1
 
         # Check for next page
         next_button = page.query_selector('a.pag-pnext:not(.disabled)')
@@ -295,8 +317,8 @@ def scrape_brand_listing(page: Page, brand: str) -> list[dict]:
             logger.info(f"Reached last page for {brand}")
             break
 
-    logger.info(f"Found {len(manuals)} manuals for {brand}")
-    return manuals
+    logger.info(f"Found {manual_count} manuals for {brand}")
+    return manual_count
 
 
 def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> bool:
@@ -434,26 +456,11 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
     """Scrape all TV manuals for a brand."""
     logger.info(f"Starting scrape for brand: {brand}")
 
-    # Get all manual listings
-    manuals = scrape_brand_listing(page, brand)
-
-    # Add to database
-    for manual in manuals:
-        manual_id = database.add_manual(
-            brand=brand,
-            model=manual["model"],
-            model_url=manual.get("model_url"),
-            model_id=manual.get("model_id"),
-            doc_type=manual.get("doc_type"),
-            doc_description=manual.get("doc_description"),
-            manual_url=manual["manual_url"],
-            manualslib_id=manual.get("manualslib_id")
-        )
-        if manual_id:
-            logger.info(f"Added to database: {manual['model']} - {manual.get('doc_type')}")
+    # Scrape all manual listings (adds to DB immediately for real-time progress)
+    manual_count = scrape_brand_listing(page, brand)
 
     if not download:
-        logger.info(f"Scraping complete for {brand}. Skipping downloads.")
+        logger.info(f"Scraping complete for {brand}. Found {manual_count} manuals. Skipping downloads.")
         return
 
     # Download manuals that haven't been downloaded yet (excludes archived)
@@ -536,18 +543,8 @@ def main():
         try:
             # Brand discovery mode
             if args.discover_brands:
+                # Brands are added to DB inside discover_brands() for real-time progress
                 discovered_brands, all_tv_related_categories = discover_brands(page)
-                for brand_info in discovered_brands:
-                    brand_id = database.add_brand(
-                        name=brand_info["name"],
-                        slug=brand_info["slug"],
-                        brand_url=brand_info["brand_url"],
-                        tv_categories=brand_info["tv_categories"],
-                        tv_category_urls=brand_info["tv_category_urls"],
-                        all_categories=brand_info["all_categories"],
-                    )
-                    if brand_id:
-                        logger.info(f"Added brand: {brand_info['name']}")
 
                 brand_stats = database.get_brand_stats()
                 logger.info(f"Brand discovery complete. Total: {brand_stats['total']}, Pending: {brand_stats['pending']}")
