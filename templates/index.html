@@ -164,6 +164,39 @@
             padding: 40px;
             color: #666;
         }
+        .actions-bar {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .actions-bar h3 {
+            margin-right: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .btn-danger:hover {
+            background: #fecaca;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -187,6 +220,14 @@
                 <h3>Pending</h3>
                 <div class="value" id="pending">-</div>
             </div>
+            <div class="stat-card" style="border-left: 3px solid #8b5cf6;">
+                <h3>Discovered Brands</h3>
+                <div class="value" id="brands-total">-</div>
+            </div>
+            <div class="stat-card" style="border-left: 3px solid #8b5cf6;">
+                <h3>Brands Scraped</h3>
+                <div class="value" id="brands-scraped">-</div>
+            </div>
         </div>
 
         <div class="brand-stats" id="brand-stats">
@@ -207,6 +248,13 @@
                 <option value="archived">Archived</option>
                 <option value="pending">Pending</option>
             </select>
+        </div>
+
+        <div class="actions-bar">
+            <h3>Database:</h3>
+            <button class="btn btn-danger" onclick="clearBrands()">Clear Brands</button>
+            <button class="btn btn-danger" onclick="clearManuals()">Clear Manuals</button>
+            <button class="btn btn-danger" onclick="clearAll()">Clear All</button>
         </div>
 
         <table>
@@ -252,17 +300,35 @@
             document.getElementById('brand-bars').innerHTML = barsHtml || '<p>No data yet</p>';
         }
 
+        async function loadBrandStats() {
+            const res = await fetch('/api/brand-stats');
+            const stats = await res.json();
+
+            document.getElementById('brands-total').textContent = stats.total;
+            document.getElementById('brands-scraped').textContent = stats.scraped;
+        }
+
         async function loadBrands() {
             const res = await fetch('/api/brands');
             const brands = await res.json();
 
             const select = document.getElementById('filter-brand');
+            const currentValue = select.value;
+
+            // Reset options
+            select.innerHTML = '<option value="">All Brands</option>';
+
             brands.forEach(brand => {
                 const option = document.createElement('option');
                 option.value = brand;
                 option.textContent = brand.charAt(0).toUpperCase() + brand.slice(1);
                 select.appendChild(option);
             });
+
+            // Restore selection if still valid
+            if (brands.includes(currentValue)) {
+                select.value = currentValue;
+            }
         }
 
         async function loadManuals() {
@@ -319,17 +385,44 @@
             }).join('');
         }
 
+        async function clearBrands() {
+            if (!confirm('Are you sure you want to clear all discovered brands?')) return;
+            await fetch('/api/clear-brands', { method: 'POST' });
+            loadStats();
+            loadBrandStats();
+            loadBrands();
+        }
+
+        async function clearManuals() {
+            if (!confirm('Are you sure you want to clear all manuals?')) return;
+            await fetch('/api/clear-manuals', { method: 'POST' });
+            loadStats();
+            loadManuals();
+            loadBrands();
+        }
+
+        async function clearAll() {
+            if (!confirm('Are you sure you want to clear ALL data (brands and manuals)?')) return;
+            await fetch('/api/clear-all', { method: 'POST' });
+            loadStats();
+            loadBrandStats();
+            loadBrands();
+            loadManuals();
+        }
+
         document.getElementById('filter-brand').addEventListener('change', loadManuals);
         document.getElementById('filter-status').addEventListener('change', loadManuals);
 
         // Initial load
         loadStats();
+        loadBrandStats();
         loadBrands();
         loadManuals();
 
         // Auto-refresh every 30 seconds
         setInterval(() => {
             loadStats();
+            loadBrandStats();
             loadManuals();
         }, 30000);
     </script>

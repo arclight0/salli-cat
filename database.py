@@ -14,6 +14,34 @@ def get_connection():
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
+
+    # Brands table - discovered brands with TV category
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS brands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            slug TEXT UNIQUE NOT NULL,
+            brand_url TEXT,
+            tv_categories TEXT,
+            tv_category_urls TEXT,
+            all_categories TEXT,
+            scraped INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Migration for brands table
+    for col, coltype in [
+        ("tv_categories", "TEXT"),
+        ("tv_category_urls", "TEXT"),
+        ("all_categories", "TEXT"),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE brands ADD COLUMN {col} {coltype}")
+        except sqlite3.OperationalError:
+            pass
+
+    # Manuals table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS manuals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,6 +60,7 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
     # Migration: add columns if they don't exist (for existing databases)
     for col, coltype in [
         ("manualslib_id", "TEXT"),
@@ -50,6 +79,8 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_brand ON manuals(brand)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_downloaded ON manuals(downloaded)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_archived ON manuals(archived)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_brands_slug ON brands(slug)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_brands_scraped ON brands(scraped)")
 
     conn.commit()
     conn.close()
@@ -88,6 +119,97 @@ def get_manual_by_url(manual_url: str) -> dict | None:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# Brand management functions
+
+def add_brand(
+    name: str,
+    slug: str,
+    brand_url: str = None,
+    tv_categories: str = None,
+    tv_category_urls: str = None,
+    all_categories: str = None,
+) -> int | None:
+    """Add a discovered brand to the database. Returns id if new, None if exists."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO brands (name, slug, brand_url, tv_categories, tv_category_urls, all_categories)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, slug, brand_url, tv_categories, tv_category_urls, all_categories))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        # Already exists
+        return None
+    finally:
+        conn.close()
+
+
+def get_all_brands(scraped: bool = None) -> list[dict]:
+    """Get all discovered brands, optionally filtered by scraped status."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    query = "SELECT * FROM brands WHERE 1=1"
+    params = []
+
+    if scraped is not None:
+        query += " AND scraped = ?"
+        params.append(1 if scraped else 0)
+
+    query += " ORDER BY name"
+
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_unscraped_brands() -> list[dict]:
+    """Get brands that haven't been scraped yet."""
+    return get_all_brands(scraped=False)
+
+
+def mark_brand_scraped(brand_id: int):
+    """Mark a brand as scraped."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE brands SET scraped = 1 WHERE id = ?", (brand_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_brand_by_slug(slug: str) -> dict | None:
+    """Get a brand by its slug."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM brands WHERE slug = ?", (slug,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_brand_stats() -> dict:
+    """Get statistics about discovered brands."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) as total FROM brands")
+    total = cursor.fetchone()["total"]
+
+    cursor.execute("SELECT COUNT(*) as scraped FROM brands WHERE scraped = 1")
+    scraped = cursor.fetchone()["scraped"]
+
+    conn.close()
+
+    return {
+        "total": total,
+        "scraped": scraped,
+        "pending": total - scraped
+    }
 
 
 def update_downloaded(manual_id: int, file_path: str):
@@ -212,6 +334,25 @@ def clear_all():
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM manuals")
+    conn.commit()
+    conn.close()
+
+
+def clear_brands():
+    """Delete all records from the brands table."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM brands")
+    conn.commit()
+    conn.close()
+
+
+def clear_everything():
+    """Delete all records from both manuals and brands tables."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM manuals")
+    cursor.execute("DELETE FROM brands")
     conn.commit()
     conn.close()
 

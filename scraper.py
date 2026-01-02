@@ -70,6 +70,140 @@ def sanitize_filename(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
 
+def extract_slug_from_url(url: str) -> str | None:
+    """Extract brand slug from URL like /brand/hitachi/ or /brand/hitachi/tv.html"""
+    match = re.search(r'/brand/([^/]+)/?', url)
+    return match.group(1) if match else None
+
+
+def is_tv_category(cat_name: str) -> bool:
+    """Check if a category name matches our TV criteria.
+
+    Matches:
+    - Exact "TV" (case-insensitive)
+    - "TV * Combo" pattern (e.g., "TV DVD Combo", "TV VCR Combo")
+    """
+    name_lower = cat_name.lower().strip()
+
+    # Exact match for "TV"
+    if name_lower == "tv":
+        return True
+
+    # Pattern: "TV <something> Combo"
+    if name_lower.startswith("tv ") and name_lower.endswith(" combo"):
+        return True
+
+    return False
+
+
+def discover_brands(page: Page) -> tuple[list[dict], set[str]]:
+    """Discover all brands that have TV in their categories.
+
+    Returns:
+        tuple: (list of brand dicts, set of all categories containing 'tv')
+
+    1. Visit https://www.manualslib.com/brand/
+    2. Find all letter/number links in the header
+    3. Visit each page (with pagination) and find brands with TV category
+    """
+    brands = []
+    seen_slugs = set()
+    all_tv_related_categories = set()  # Track all categories with "tv" in name
+
+    # First, get all the letter/number index links
+    logger.info("Discovering brands with TV category...")
+    page.goto(f"{BASE_URL}/brand/", wait_until="networkidle")
+    random_delay(1, 2)
+
+    # Find all index links in the bmap div
+    index_links = page.query_selector_all('div.bmap a')
+    index_urls = []
+    for link in index_links:
+        href = link.get_attribute("href")
+        if href:
+            url = href if href.startswith("http") else BASE_URL + href
+            index_urls.append(url)
+
+    logger.info(f"Found {len(index_urls)} index pages to scan")
+
+    # Visit each index page
+    for index_url in index_urls:
+        current_url = index_url
+        page_num = 1
+
+        while current_url:
+            logger.info(f"Scanning: {current_url} (page {page_num})")
+            page.goto(current_url, wait_until="networkidle")
+            random_delay(1, 2)
+
+            # Find all brand rows
+            brand_rows = page.query_selector_all('div.row.tabled')
+
+            for row in brand_rows:
+                # Get brand info from col1
+                brand_link = row.query_selector('div.col1 a, div.col-xs-3 a')
+                if not brand_link:
+                    continue
+
+                brand_name = brand_link.inner_text().strip()
+                brand_href = brand_link.get_attribute("href")
+                brand_url = brand_href if brand_href.startswith("http") else BASE_URL + brand_href
+                slug = extract_slug_from_url(brand_url)
+
+                if not slug or slug in seen_slugs:
+                    continue
+
+                # Get categories from catel div
+                category_links = row.query_selector_all('div.catel a, div.col-xs-9 a')
+                all_categories = []
+                tv_categories = []
+                tv_category_urls = []
+
+                for cat_link in category_links:
+                    cat_name = cat_link.inner_text().strip()
+                    cat_href = cat_link.get_attribute("href")
+                    cat_url = cat_href if cat_href and cat_href.startswith("http") else BASE_URL + (cat_href or "")
+
+                    all_categories.append(cat_name)
+
+                    # Track all categories with "tv" in them for review
+                    if 'tv' in cat_name.lower():
+                        all_tv_related_categories.add(cat_name)
+
+                    # Check if this matches our exact TV criteria
+                    if is_tv_category(cat_name):
+                        tv_categories.append(cat_name)
+                        tv_category_urls.append(cat_url)
+
+                if tv_categories:
+                    seen_slugs.add(slug)
+                    brands.append({
+                        "name": brand_name,
+                        "slug": slug,
+                        "brand_url": brand_url,
+                        "tv_categories": ", ".join(tv_categories),
+                        "tv_category_urls": ", ".join(tv_category_urls),
+                        "all_categories": ", ".join(all_categories),
+                    })
+                    logger.info(f"Found TV brand: {brand_name} ({slug}) - Categories: {', '.join(tv_categories)}")
+
+            # Check for next page in pagination
+            next_page_link = page.query_selector('ul.pagination li.active + li a.plink')
+            if next_page_link:
+                next_href = next_page_link.get_attribute("href")
+                if next_href:
+                    current_url = next_href if next_href.startswith("http") else BASE_URL + next_href
+                    page_num += 1
+                    random_delay(1, 2)
+                else:
+                    current_url = None
+            else:
+                current_url = None
+
+    logger.info(f"Discovered {len(brands)} brands with TV category")
+    return brands, all_tv_related_categories
+
+
 def scrape_brand_listing(page: Page, brand: str) -> list[dict]:
     """Scrape all manual links from a brand's TV listing pages.
 
@@ -361,23 +495,34 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape TV manuals from ManualsLib")
-    parser.add_argument("--brands", nargs="*", help="Specific brands to scrape (overrides config)")
+    parser.add_argument("--brands", nargs="*", help="Specific brands to scrape (overrides config and discovered brands)")
+    parser.add_argument("--discover-brands", action="store_true", help="Discover all brands with TV category")
+    parser.add_argument("--use-discovered", action="store_true", help="Scrape all discovered brands (instead of config)")
     parser.add_argument("--scrape-only", action="store_true", help="Only scrape listings, don't download")
     parser.add_argument("--download-only", action="store_true", help="Only download pending manuals")
-    parser.add_argument("--clear", action="store_true", help="Clear all records from database before scraping")
+    parser.add_argument("--clear", action="store_true", help="Clear all manual records from database before scraping")
+    parser.add_argument("--clear-brands", action="store_true", help="Clear all discovered brands from database")
+    parser.add_argument("--clear-all", action="store_true", help="Clear both manuals and brands from database")
     args = parser.parse_args()
 
     config = load_config()
-    brands = args.brands or config.get("brands", [])
     download_dir = Path(config.get("download_dir", "./downloads")).resolve()
     download_dir.mkdir(parents=True, exist_ok=True)
 
     database.init_db()
 
-    if args.clear:
-        logger.info("Clearing all records from database...")
-        database.clear_all()
+    if args.clear_all:
+        logger.info("Clearing all records from database (manuals and brands)...")
+        database.clear_everything()
         logger.info("Database cleared.")
+    elif args.clear_brands:
+        logger.info("Clearing all discovered brands from database...")
+        database.clear_brands()
+        logger.info("Brands cleared.")
+    elif args.clear:
+        logger.info("Clearing all manual records from database...")
+        database.clear_all()
+        logger.info("Manuals cleared.")
 
     with sync_playwright() as p:
         # Launch browser in headed mode so human can solve captchas
@@ -389,6 +534,49 @@ def main():
         page = context.new_page()
 
         try:
+            # Brand discovery mode
+            if args.discover_brands:
+                discovered_brands, all_tv_related_categories = discover_brands(page)
+                for brand_info in discovered_brands:
+                    brand_id = database.add_brand(
+                        name=brand_info["name"],
+                        slug=brand_info["slug"],
+                        brand_url=brand_info["brand_url"],
+                        tv_categories=brand_info["tv_categories"],
+                        tv_category_urls=brand_info["tv_category_urls"],
+                        all_categories=brand_info["all_categories"],
+                    )
+                    if brand_id:
+                        logger.info(f"Added brand: {brand_info['name']}")
+
+                brand_stats = database.get_brand_stats()
+                logger.info(f"Brand discovery complete. Total: {brand_stats['total']}, Pending: {brand_stats['pending']}")
+
+                # Log all TV-related categories for review
+                if all_tv_related_categories:
+                    logger.info("\n" + "=" * 60)
+                    logger.info("ALL CATEGORIES WITH 'TV' IN NAME (for review):")
+                    logger.info("=" * 60)
+                    for cat in sorted(all_tv_related_categories):
+                        logger.info(f"  - {cat}")
+                    logger.info("=" * 60)
+                    logger.info(f"Total: {len(all_tv_related_categories)} unique TV-related categories")
+                    logger.info("Note: Only exact 'TV' and 'TV * Combo' patterns were included in brand discovery.")
+
+                browser.close()
+                return
+
+            # Determine which brands to scrape
+            if args.brands:
+                brands = args.brands
+            elif args.use_discovered:
+                # Use discovered brands from database
+                discovered_brands = database.get_unscraped_brands()
+                brands = [b["slug"] for b in discovered_brands]
+                logger.info(f"Using {len(brands)} discovered brands")
+            else:
+                brands = config.get("brands", [])
+
             if args.download_only:
                 # Only download pending manuals
                 for brand in brands:
@@ -427,6 +615,13 @@ def main():
             else:
                 for brand in brands:
                     scrape_brand(page, brand, download_dir, download=not args.scrape_only)
+
+                    # Mark brand as scraped if using discovered brands
+                    if args.use_discovered:
+                        brand_record = database.get_brand_by_slug(brand)
+                        if brand_record:
+                            database.mark_brand_scraped(brand_record["id"])
+
                     random_delay(3, 6)
         finally:
             browser.close()

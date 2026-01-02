@@ -38,10 +38,53 @@ def api_stats():
 
 @app.route("/api/brands")
 def api_brands():
-    """Get list of all brands in the database."""
+    """Get list of all brands (from both manuals and discovered brands)."""
+    # Get brands from manuals table
     manuals = database.get_all_manuals()
-    brands = sorted(set(m["brand"] for m in manuals))
+    manual_brands = set(m["brand"] for m in manuals)
+
+    # Get discovered brands from brands table
+    discovered = database.get_all_brands()
+    discovered_brands = set(b["slug"] for b in discovered)
+
+    # Combine and sort
+    all_brands = sorted(manual_brands | discovered_brands)
+    return jsonify(all_brands)
+
+
+@app.route("/api/discovered-brands")
+def api_discovered_brands():
+    """Get all discovered brands with their metadata."""
+    brands = database.get_all_brands()
     return jsonify(brands)
+
+
+@app.route("/api/brand-stats")
+def api_brand_stats():
+    """Get statistics about discovered brands."""
+    stats = database.get_brand_stats()
+    return jsonify(stats)
+
+
+@app.route("/api/clear-brands", methods=["POST"])
+def api_clear_brands():
+    """Clear all discovered brands from database."""
+    database.clear_brands()
+    return jsonify({"status": "ok", "message": "Brands cleared"})
+
+
+@app.route("/api/clear-manuals", methods=["POST"])
+def api_clear_manuals():
+    """Clear all manuals from database."""
+    database.clear_all()
+    return jsonify({"status": "ok", "message": "Manuals cleared"})
+
+
+@app.route("/api/clear-all", methods=["POST"])
+def api_clear_all():
+    """Clear both manuals and brands from database."""
+    database.clear_everything()
+    return jsonify({"status": "ok", "message": "Database cleared"})
 
 
 @app.route("/download/<int:manual_id>")
