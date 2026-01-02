@@ -2,17 +2,22 @@
 import argparse
 import hashlib
 import logging
+import os
 import random
 import re
-import time
 import shutil
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright, Page
+
+# Load environment variables from .env file
+load_dotenv()
 
 import database
 from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking
@@ -695,8 +700,9 @@ def main():
     download_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize 2captcha solver if API key is configured
+    # Check environment variable first, then fall back to config.yaml
     captcha_solver = None
-    twocaptcha_key = config.get("twocaptcha_api_key")
+    twocaptcha_key = os.environ.get("TWOCAPTCHA_API_KEY") or config.get("twocaptcha_api_key")
     if twocaptcha_key:
         captcha_solver = TwoCaptchaSolver(twocaptcha_key)
         balance = captcha_solver.get_balance()

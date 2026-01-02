@@ -13,6 +13,8 @@ A Python-based scraper to download TV manuals from multiple sources (ManualsLib,
 manualslib-scraper/
 ├── pyproject.toml        # Project config and dependencies
 ├── config.yaml           # Brand list and URL configuration
+├── .env                  # Environment variables (API keys) - not in git
+├── .env.example          # Example environment file
 ├── Procfile              # Process definitions for honcho
 ├── scraper.py            # ManualsLib Playwright scraper
 ├── manualzz_scraper.py   # Manualzz Playwright scraper
@@ -25,7 +27,7 @@ manualslib-scraper/
 │   └── index.html        # Dashboard UI
 ├── extensions/           # Browser extensions (optional)
 │   └── ublock_origin/    # uBlock Origin for ad blocking
-├── downloads/            # Downloaded PDFs (organized by source/brand)
+├── downloads/            # Downloaded PDFs (SHA1-based storage)
 └── manuals.db            # SQLite database (created on first run)
 ```
 
@@ -188,9 +190,10 @@ ManualsLib uses reCAPTCHA to protect manual downloads. The scraper supports two 
 For hands-free operation, configure 2captcha automatic solving:
 
 1. Get an API key from [2captcha.com](https://2captcha.com/enterpage)
-2. Add your API key to `config.yaml`:
-   ```yaml
-   twocaptcha_api_key: your_api_key_here
+2. Copy `.env.example` to `.env` and add your API key:
+   ```bash
+   cp .env.example .env
+   # Edit .env and set TWOCAPTCHA_API_KEY=your_api_key_here
    ```
 3. The scraper will automatically solve captchas (~$2.99 per 1000 captchas)
 

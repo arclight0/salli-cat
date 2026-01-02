@@ -1,6 +1,9 @@
 # Virtual environment
 .venv/
 
+# Environment variables (contains secrets)
+.env
+
 # Database
 *.db
 

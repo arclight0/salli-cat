@@ -8,6 +8,7 @@ dependencies = [
     "flask",
     "pyyaml",
     "honcho",
+    "python-dotenv",
 ]
 
 [project.scripts]
