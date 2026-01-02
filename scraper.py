@@ -30,6 +30,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.manualslib.com"
+
+# Circuit breaker settings
+MAX_CONSECUTIVE_FAILURES = 3
+
+
+class DownloadCircuitBreakerError(Exception):
+    """Raised when too many consecutive download failures occur."""
+    pass
+
+
 ARCHIVE_ORG_BASE = "https://archive.org/details/manualslib-id-"
 CAPTCHA_TIMEOUT = 300  # 5 minutes to solve captcha
 
@@ -446,12 +456,28 @@ def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT, captcha_
     return False
 
 
-def download_file_to_temp(url: str) -> tuple[Path, str] | None:
+def get_datacenter_proxy_url() -> str | None:
+    """Get Bright Data datacenter proxy URL from environment variables."""
+    host = os.environ.get("BRIGHTDATA_DC_HOST")
+    port = os.environ.get("BRIGHTDATA_DC_PORT")
+    user = os.environ.get("BRIGHTDATA_DC_USER")
+    password = os.environ.get("BRIGHTDATA_DC_PASS")
+
+    if host and port and user and password:
+        return f"http://{user}:{password}@{host}:{port}"
+    return None
+
+
+def download_file_to_temp(url: str, use_proxy: bool = True) -> tuple[Path, str] | None:
     """
     Download a file to a temp location.
 
     Returns (temp_path, original_filename) if successful, None otherwise.
     The original_filename is extracted from Content-Disposition header or URL.
+
+    Args:
+        url: URL to download
+        use_proxy: If True and datacenter proxy is configured, use it
     """
     import tempfile
 
@@ -460,10 +486,21 @@ def download_file_to_temp(url: str) -> tuple[Path, str] | None:
         url = "https:" + url
 
     try:
+        # Set up proxy if configured
+        proxy_url = get_datacenter_proxy_url() if use_proxy else None
+        if proxy_url:
+            proxy_handler = urllib.request.ProxyHandler({
+                'http': proxy_url,
+                'https': proxy_url,
+            })
+            opener = urllib.request.build_opener(proxy_handler)
+        else:
+            opener = urllib.request.build_opener()
+
         req = urllib.request.Request(url)
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-        with urllib.request.urlopen(req, timeout=120) as response:
+        with opener.open(req, timeout=120) as response:
             # Try to get filename from Content-Disposition header
             content_disp = response.headers.get('Content-Disposition', '')
             original_filename = None
@@ -648,6 +685,8 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
     pending = database.get_undownloaded_manuals(brand)
     logger.info(f"Found {len(pending)} manuals to download for {brand}")
 
+    consecutive_failures = 0
+
     for manual_record in pending:
         try:
             # Extract manualslib_id if not already in DB
@@ -677,9 +716,26 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
             if result:
                 file_path, sha1, md5, file_size, original_filename = result
                 database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
+                consecutive_failures = 0  # Reset on success
+            else:
+                consecutive_failures += 1
+                logger.warning(f"Download failed ({consecutive_failures}/{MAX_CONSECUTIVE_FAILURES} consecutive failures)")
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                    raise DownloadCircuitBreakerError(
+                        f"Stopping after {MAX_CONSECUTIVE_FAILURES} consecutive download failures. "
+                        "This may indicate an IP ban or site issue."
+                    )
             random_delay()
+        except DownloadCircuitBreakerError:
+            raise  # Re-raise circuit breaker errors
         except Exception as e:
             logger.error(f"Error downloading {manual_record['model']}: {e}")
+            consecutive_failures += 1
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                raise DownloadCircuitBreakerError(
+                    f"Stopping after {MAX_CONSECUTIVE_FAILURES} consecutive download failures. "
+                    "This may indicate an IP ban or site issue."
+                )
             continue
 
 
@@ -713,6 +769,11 @@ def main():
     else:
         logger.info("2captcha not configured - will use manual captcha solving")
 
+    # Log proxy configuration
+    dc_proxy = get_datacenter_proxy_url()
+    if dc_proxy:
+        logger.info("Bright Data datacenter proxy configured for downloads")
+
     database.init_db()
 
     if args.clear_all:
@@ -728,21 +789,23 @@ def main():
         database.clear_all()
         logger.info("Manuals cleared.")
 
-    # Get extension path for ad blocking
+    # Get browser and extension settings
     project_dir = Path(__file__).parent
+    browser_type = config.get("browser", "chromium")
     extension_path = get_extension_path(config, project_dir)
+
     if extension_path:
         logger.info(f"Using uBlock Origin extension: {extension_path}")
     else:
         logger.info("No uBlock Origin extension found - will use route-based ad blocking")
-        logger.info("To use uBlock Origin, set 'ublock_origin_path' in config.yaml or place extension in ./extensions/ublock_origin/")
 
     with sync_playwright() as p:
         # Launch browser with extension support (requires persistent context)
-        context = launch_browser_with_extension(
+        context, extension_loaded = launch_browser_with_extension(
             p,
             extension_path=extension_path,
             headless=False,  # Extensions may not work in headless mode
+            browser=browser_type,
         )
 
         # Persistent context may already have pages open, use the first one or create new
@@ -751,8 +814,8 @@ def main():
         else:
             page = context.new_page()
 
-        # If no extension, use route-based ad blocking as fallback
-        if not extension_path:
+        # If no extension loaded, use route-based ad blocking as fallback
+        if not extension_loaded:
             setup_route_ad_blocking(page)
         else:
             logger.info("uBlock Origin extension loaded for ad blocking")
@@ -796,6 +859,7 @@ def main():
 
             if args.download_only:
                 # Only download pending manuals
+                consecutive_failures = 0
                 for brand in brands:
                     pending = database.get_undownloaded_manuals(brand)
                     logger.info(f"Downloading {len(pending)} pending manuals for {brand}")
@@ -828,9 +892,26 @@ def main():
                             if result:
                                 file_path, sha1, md5, file_size, original_filename = result
                                 database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
+                                consecutive_failures = 0  # Reset on success
+                            else:
+                                consecutive_failures += 1
+                                logger.warning(f"Download failed ({consecutive_failures}/{MAX_CONSECUTIVE_FAILURES} consecutive failures)")
+                                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                                    raise DownloadCircuitBreakerError(
+                                        f"Stopping after {MAX_CONSECUTIVE_FAILURES} consecutive download failures. "
+                                        "This may indicate an IP ban or site issue."
+                                    )
                             random_delay()
+                        except DownloadCircuitBreakerError:
+                            raise  # Re-raise to stop completely
                         except Exception as e:
                             logger.error(f"Error downloading {manual_record['model']}: {e}")
+                            consecutive_failures += 1
+                            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                                raise DownloadCircuitBreakerError(
+                                    f"Stopping after {MAX_CONSECUTIVE_FAILURES} consecutive download failures. "
+                                    "This may indicate an IP ban or site issue."
+                                )
             else:
                 # Get configured categories (defaults to just "tv")
                 configured_categories = config.get("categories", ["tv"])

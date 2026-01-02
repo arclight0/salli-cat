@@ -2,12 +2,33 @@
 """Browser helper for launching Chromium with extensions (like uBlock Origin)."""
 
 import logging
+import os
 import tempfile
 from pathlib import Path
 
 from playwright.sync_api import BrowserContext, Playwright
 
 logger = logging.getLogger(__name__)
+
+
+def get_web_unlocker_proxy() -> dict | None:
+    """
+    Get Bright Data Web Unlocker proxy config from environment variables.
+
+    Returns a proxy dict for Playwright, or None if not configured.
+    """
+    host = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_HOST")
+    port = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_PORT")
+    user = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_USER")
+    password = os.environ.get("BRIGHTDATA_WEB_UNLOCKER_PASS")
+
+    if host and port and user and password:
+        return {
+            "server": f"http://{host}:{port}",
+            "username": user,
+            "password": password,
+        }
+    return None
 
 # Common ad-blocking patterns as fallback
 AD_PATTERNS = [
@@ -42,11 +63,14 @@ def launch_browser_with_extension(
     user_data_dir: Path | str | None = None,
     viewport: dict = None,
     user_agent: str = None,
+    use_proxy: bool = True,
+    browser: str = "chromium",
 ) -> BrowserContext:
     """
-    Launch Chromium with an extension loaded.
+    Launch a browser with optional extension and proxy support.
 
-    To use extensions, Playwright requires a persistent context.
+    To use extensions, Playwright requires a persistent context with Chromium.
+    Extensions are NOT supported in Firefox or WebKit.
 
     Args:
         playwright: Playwright instance
@@ -55,9 +79,11 @@ def launch_browser_with_extension(
         user_data_dir: Browser profile directory (created if None)
         viewport: Viewport dimensions dict {"width": 1280, "height": 800}
         user_agent: Custom user agent string
+        use_proxy: If True, use Bright Data Web Unlocker proxy if configured
+        browser: Browser to use - "chromium", "firefox", or "webkit"
 
     Returns:
-        BrowserContext with extension loaded
+        BrowserContext
     """
     if viewport is None:
         viewport = {"width": 1280, "height": 800}
@@ -72,35 +98,57 @@ def launch_browser_with_extension(
         user_data_dir = Path(user_data_dir)
         user_data_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build Chrome args
-    chrome_args = []
+    # Get the browser type
+    browser = browser.lower()
+    if browser == "firefox":
+        browser_type = playwright.firefox
+    elif browser == "webkit":
+        browser_type = playwright.webkit
+    else:
+        browser_type = playwright.chromium
+        browser = "chromium"  # Normalize
 
-    if extension_path:
+    logger.info(f"Using browser: {browser}")
+
+    # Build browser args (extensions only work with Chromium)
+    browser_args = []
+    extension_loaded = False
+
+    if extension_path and browser == "chromium":
         extension_path = Path(extension_path)
         if extension_path.exists() and (extension_path / "manifest.json").exists():
             ext_path_str = str(extension_path.absolute())
-            chrome_args.extend([
+            browser_args.extend([
                 f"--disable-extensions-except={ext_path_str}",
                 f"--load-extension={ext_path_str}",
             ])
             logger.info(f"Loading extension from: {ext_path_str}")
+            extension_loaded = True
         else:
             logger.warning(f"Extension path not valid: {extension_path}")
+    elif extension_path and browser != "chromium":
+        logger.warning(f"Extensions are only supported in Chromium, not {browser}")
 
-    # Launch persistent context (required for extensions)
-    context = playwright.chromium.launch_persistent_context(
+    # Get proxy configuration
+    proxy = get_web_unlocker_proxy() if use_proxy else None
+    if proxy:
+        logger.info(f"Using Bright Data Web Unlocker proxy: {proxy['server']}")
+
+    # Launch persistent context
+    context = browser_type.launch_persistent_context(
         user_data_dir=str(user_data_dir),
         headless=headless,
-        args=chrome_args,
+        args=browser_args if browser == "chromium" else [],
         viewport=viewport,
         user_agent=user_agent,
+        proxy=proxy,
         # Grant permissions commonly needed
         permissions=["geolocation"],
         # Reduce detection
         ignore_https_errors=True,
     )
 
-    return context
+    return context, extension_loaded
 
 
 def setup_route_ad_blocking(page) -> None:

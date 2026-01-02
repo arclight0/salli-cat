@@ -405,16 +405,17 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
     return None
 
 
-def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True, extension_path: Path = None):
+def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True, extension_path: Path = None, browser: str = "chromium"):
     """Main scraping function for manualzz."""
     database.init_db()
 
     with sync_playwright() as p:
         # Launch browser with extension support (requires persistent context)
-        context = launch_browser_with_extension(
+        context, extension_loaded = launch_browser_with_extension(
             p,
             extension_path=extension_path,
             headless=False,
+            browser=browser,
         )
 
         # Persistent context may already have pages open, use the first one or create new
@@ -423,8 +424,8 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
         else:
             page = context.new_page()
 
-        # If no extension, use route-based ad blocking as fallback
-        if not extension_path:
+        # If no extension loaded, use route-based ad blocking as fallback
+        if not extension_loaded:
             setup_route_ad_blocking(page)
         else:
             logger.info("uBlock Origin extension loaded for ad blocking")
@@ -510,14 +511,18 @@ def main():
         logger.info("No uBlock Origin extension found - will use route-based ad blocking")
         logger.info("To use uBlock Origin, set 'ublock_origin_path' in config.yaml or place extension in ./extensions/ublock_origin/")
 
+    # Get browser type from config
+    browser_type = config.get("browser", "chromium")
+
     if args.download_only:
         # Only download pending manuals
         with sync_playwright() as p:
             # Launch browser with extension support
-            context = launch_browser_with_extension(
+            context, extension_loaded = launch_browser_with_extension(
                 p,
                 extension_path=extension_path,
                 headless=False,
+                browser=browser_type,
             )
 
             # Persistent context may already have pages open
@@ -526,8 +531,8 @@ def main():
             else:
                 page = context.new_page()
 
-            # If no extension, use route-based ad blocking as fallback
-            if not extension_path:
+            # If no extension loaded, use route-based ad blocking as fallback
+            if not extension_loaded:
                 setup_route_ad_blocking(page)
 
             try:
@@ -555,7 +560,7 @@ def main():
             finally:
                 context.close()
     else:
-        scrape_manualzz(catalog_urls, download_dir, download=not args.scrape_only, extension_path=extension_path)
+        scrape_manualzz(catalog_urls, download_dir, download=not args.scrape_only, extension_path=extension_path, browser=browser_type)
 
 
 if __name__ == "__main__":

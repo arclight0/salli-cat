@@ -18,6 +18,10 @@ categories:
 
 download_dir: ./downloads
 
+# Browser to use: chromium, firefox, or webkit
+# Note: Extensions (like uBlock Origin) only work with chromium
+browser: firefox
+
 # 2captcha API key: Set TWOCAPTCHA_API_KEY in .env file
 # See .env.example for details
 

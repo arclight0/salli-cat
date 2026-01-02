@@ -219,6 +219,38 @@ CAPTCHA DETECTED - Please solve it in the browser window
 ============================================================
 ```
 
+## Proxy Support (Bright Data)
+
+ManualsLib may block your IP after too many requests. The scrapers support Bright Data proxies to avoid IP bans:
+
+### Web Unlocker (for browser)
+
+Handles anti-bot measures and CAPTCHAs automatically:
+
+```bash
+# In .env
+BRIGHTDATA_WEB_UNLOCKER_HOST=brd.superproxy.io
+BRIGHTDATA_WEB_UNLOCKER_PORT=33335
+BRIGHTDATA_WEB_UNLOCKER_USER=brd-customer-CUSTOMER_ID-zone-web_unlocker
+BRIGHTDATA_WEB_UNLOCKER_PASS=your_password
+```
+
+### Datacenter Proxy (for file downloads)
+
+Used for direct PDF downloads:
+
+```bash
+# In .env
+BRIGHTDATA_DC_HOST=brd.superproxy.io
+BRIGHTDATA_DC_PORT=33335
+BRIGHTDATA_DC_USER=brd-customer-CUSTOMER_ID-zone-datacenter
+BRIGHTDATA_DC_PASS=your_password
+```
+
+### Circuit Breaker
+
+The scraper will automatically stop after 3 consecutive download failures to avoid wasting money on CAPTCHA solutions when there's an IP ban or site issue.
+
 ## Ad Blocking
 
 The scrapers support ad blocking to prevent ads from interfering with the scraping process. Two methods are available:
