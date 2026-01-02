@@ -298,6 +298,9 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
     if pdf_link:
         pdf_url = pdf_link.get_attribute("href")
         if pdf_url:
+            # Handle protocol-relative URLs (starting with //)
+            if pdf_url.startswith("//"):
+                pdf_url = "https:" + pdf_url
             logger.info(f"Found PDF link: {pdf_url}")
             try:
                 req = urllib.request.Request(pdf_url)

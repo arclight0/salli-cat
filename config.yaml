@@ -18,6 +18,11 @@ categories:
 
 download_dir: ./downloads
 
+# 2captcha API key for automatic CAPTCHA solving (optional)
+# Get your API key from: https://2captcha.com/enterpage
+# If not set, captchas will require manual solving in the browser window
+# twocaptcha_api_key: your_api_key_here
+
 # Manualzz catalog URLs to scrape
 manualzz_urls:
   - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs

@@ -13,6 +13,7 @@ import yaml
 from playwright.sync_api import sync_playwright, Page
 
 import database
+from captcha_solver import TwoCaptchaSolver, extract_sitekey_from_page, inject_captcha_response
 
 logging.basicConfig(
     level=logging.INFO,
@@ -347,9 +348,43 @@ def scrape_category_listing(page: Page, brand: str, category_url: str, category_
     return manual_count
 
 
-def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> bool:
-    """Wait for human to solve captcha. Returns True if solved, False if timeout."""
-    logger.info("Waiting for captcha to be solved...")
+def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT, captcha_solver: TwoCaptchaSolver = None) -> bool:
+    """
+    Wait for captcha to be solved.
+
+    If captcha_solver is provided, attempts automatic solving via 2captcha.
+    Otherwise, waits for human to solve in the browser window.
+
+    Returns True if solved, False if timeout.
+    """
+    # Try automatic solving with 2captcha if configured
+    if captcha_solver:
+        logger.info("Attempting automatic captcha solving with 2captcha...")
+
+        # Extract sitekey from page
+        sitekey = extract_sitekey_from_page(page)
+        if sitekey:
+            logger.info(f"Found sitekey: {sitekey[:20]}...")
+            page_url = page.url
+
+            # Solve with 2captcha
+            token = captcha_solver.solve_recaptcha(sitekey, page_url)
+            if token:
+                # Inject the token into the page
+                if inject_captcha_response(page, token):
+                    logger.info("Captcha token injected successfully")
+                    # Give the page a moment to process
+                    time.sleep(1)
+                    return True
+                else:
+                    logger.warning("Failed to inject captcha token, falling back to manual")
+            else:
+                logger.warning("2captcha failed, falling back to manual solving")
+        else:
+            logger.warning("Could not extract sitekey, falling back to manual solving")
+
+    # Fall back to manual solving
+    logger.info("Waiting for captcha to be solved manually...")
     print("\n" + "=" * 60)
     print("CAPTCHA DETECTED - Please solve it in the browser window")
     print("=" * 60 + "\n")
@@ -386,6 +421,10 @@ def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> bool:
 
 def download_file_from_url(url: str, file_path: Path) -> bool:
     """Download a file directly from URL. Returns True if successful."""
+    # Handle protocol-relative URLs (starting with //)
+    if url.startswith("//"):
+        url = "https:" + url
+
     try:
         req = urllib.request.Request(url)
         req.add_header('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
@@ -398,7 +437,7 @@ def download_file_from_url(url: str, file_path: Path) -> bool:
         return False
 
 
-def download_manual(page: Page, manual: dict, download_dir: Path, brand: str) -> tuple[str, str, str, int] | None:
+def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, captcha_solver: TwoCaptchaSolver = None) -> tuple[str, str, str, int] | None:
     """Download a single manual. Returns (file_path, sha1, md5, file_size) if successful, None otherwise."""
     logger.info(f"Downloading: {manual['model']} - {manual['url']}")
 
@@ -422,7 +461,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str) ->
     # Check for captcha
     captcha_frame = page.query_selector('iframe[src*="recaptcha"]')
     if captcha_frame:
-        if not wait_for_captcha_solved(page):
+        if not wait_for_captcha_solved(page, captcha_solver=captcha_solver):
             return None
 
     # Prepare download directory
@@ -482,7 +521,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str) ->
     return None
 
 
-def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = True, category_urls: list[str] = None, categories: list[str] = None):
+def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = True, category_urls: list[str] = None, categories: list[str] = None, captcha_solver: TwoCaptchaSolver = None):
     """Scrape all TV manuals for a brand.
 
     Args:
@@ -492,6 +531,7 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
         download: Whether to download files after scraping
         category_urls: List of full category URLs to scrape (from discovered brands)
         categories: List of category slugs like ['tv', 'tv-dvd-combo'] to build URLs from
+        captcha_solver: Optional 2captcha solver for automatic captcha solving
     """
     logger.info(f"Starting scrape for brand: {brand}")
 
@@ -547,7 +587,8 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
                 page,
                 {"model": manual_record["model"], "url": manual_record["manual_url"], "doc_type": manual_record["doc_type"]},
                 download_dir,
-                brand
+                brand,
+                captcha_solver=captcha_solver
             )
             if result:
                 file_path, sha1, md5, file_size = result
@@ -573,6 +614,19 @@ def main():
     config = load_config()
     download_dir = Path(config.get("download_dir", "./downloads")).resolve()
     download_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize 2captcha solver if API key is configured
+    captcha_solver = None
+    twocaptcha_key = config.get("twocaptcha_api_key")
+    if twocaptcha_key:
+        captcha_solver = TwoCaptchaSolver(twocaptcha_key)
+        balance = captcha_solver.get_balance()
+        if balance is not None:
+            logger.info(f"2captcha enabled (balance: ${balance:.2f})")
+        else:
+            logger.warning("2captcha API key configured but could not verify balance")
+    else:
+        logger.info("2captcha not configured - will use manual captcha solving")
 
     database.init_db()
 
@@ -663,7 +717,8 @@ def main():
                                 page,
                                 {"model": manual_record["model"], "url": manual_record["manual_url"], "doc_type": manual_record["doc_type"]},
                                 download_dir,
-                                brand
+                                brand,
+                                captcha_solver=captcha_solver
                             )
                             if result:
                                 file_path, sha1, md5, file_size = result
@@ -683,13 +738,13 @@ def main():
                         cat_urls_str = brand_record.get("tv_category_urls", "")
                         category_urls = [url.strip() for url in cat_urls_str.split(",") if url.strip()]
 
-                        scrape_brand(page, brand, download_dir, download=not args.scrape_only, category_urls=category_urls)
+                        scrape_brand(page, brand, download_dir, download=not args.scrape_only, category_urls=category_urls, captcha_solver=captcha_solver)
                         database.mark_brand_scraped(brand_record["id"])
                         random_delay(3, 6)
                 else:
                     # Use brands from config or CLI with configured categories
                     for brand in brands:
-                        scrape_brand(page, brand, download_dir, download=not args.scrape_only, categories=configured_categories)
+                        scrape_brand(page, brand, download_dir, download=not args.scrape_only, categories=configured_categories, captcha_solver=captcha_solver)
                         random_delay(3, 6)
         finally:
             browser.close()

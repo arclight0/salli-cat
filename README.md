@@ -17,6 +17,7 @@ manualslib-scraper/
 ├── scraper.py            # ManualsLib Playwright scraper
 ├── manualzz_scraper.py   # Manualzz Playwright scraper
 ├── archive_checker.py    # Background archive.org checker
+├── captcha_solver.py     # 2captcha integration for auto-solving
 ├── database.py           # SQLite database layer
 ├── dashboard.py          # Flask web dashboard
 ├── templates/
@@ -177,7 +178,28 @@ manualzz_urls:
 
 ## Captcha Handling
 
-ManualsLib uses reCAPTCHA to protect manual downloads. This scraper handles it by:
+ManualsLib uses reCAPTCHA to protect manual downloads. The scraper supports two modes:
+
+### Automatic Solving with 2captcha (Recommended)
+
+For hands-free operation, configure 2captcha automatic solving:
+
+1. Get an API key from [2captcha.com](https://2captcha.com/enterpage)
+2. Add your API key to `config.yaml`:
+   ```yaml
+   twocaptcha_api_key: your_api_key_here
+   ```
+3. The scraper will automatically solve captchas (~$2.99 per 1000 captchas)
+
+When 2captcha is configured, the scraper will:
+- Extract the reCAPTCHA sitekey from the page
+- Submit to 2captcha and wait for solution (~10-30 seconds)
+- Inject the solution token and continue automatically
+- Fall back to manual solving if 2captcha fails
+
+### Manual Solving (Fallback)
+
+If 2captcha is not configured (or fails), the scraper falls back to manual solving:
 
 1. **Visible Browser**: Playwright runs in headed mode (you see the browser window)
 2. **Detection**: When a captcha appears, the scraper detects it and pauses
