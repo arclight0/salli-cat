@@ -42,8 +42,6 @@ manualslib-scraper/
 ├── dashboard.py          # Flask web dashboard
 ├── templates/
 │   └── index.html        # Dashboard UI
-├── extensions/           # Browser extensions (optional)
-│   └── ublock_origin/    # uBlock Origin for ad blocking
 ├── downloads/            # Downloaded PDFs (SHA1-based storage)
 └── manuals.db            # SQLite database (created on first run)
 ```
@@ -272,32 +270,23 @@ CAPTCHA DETECTED - Please solve it in the browser window
 ============================================================
 ```
 
-## Proxy Support (Bright Data)
+## Proxy Support
 
-ManualsLib may block your IP after too many requests. The scrapers support Bright Data proxies to avoid IP bans:
+ManualsLib may block your IP after too many requests. The scrapers support HTTP proxies to avoid IP bans.
 
-### Web Unlocker (for browser)
-
-Handles anti-bot measures and CAPTCHAs automatically:
+Configure in `.env`:
 
 ```bash
-# In .env
-BRIGHTDATA_WEB_UNLOCKER_HOST=brd.superproxy.io
-BRIGHTDATA_WEB_UNLOCKER_PORT=33335
-BRIGHTDATA_WEB_UNLOCKER_USER=brd-customer-CUSTOMER_ID-zone-web_unlocker
-BRIGHTDATA_WEB_UNLOCKER_PASS=your_password
+PROXY_HOST=your.proxy.host
+PROXY_PORT=7777
+PROXY_USER=your_username
+PROXY_PASS=your_password
 ```
 
-### Datacenter Proxy (for file downloads)
+Then enable in `config.yaml`:
 
-Used for direct PDF downloads:
-
-```bash
-# In .env
-BRIGHTDATA_DC_HOST=brd.superproxy.io
-BRIGHTDATA_DC_PORT=33335
-BRIGHTDATA_DC_USER=brd-customer-CUSTOMER_ID-zone-datacenter
-BRIGHTDATA_DC_PASS=your_password
+```yaml
+use_proxy: true
 ```
 
 ### Circuit Breaker
@@ -306,24 +295,7 @@ The scraper will automatically stop after 3 consecutive download failures to avo
 
 ## Ad Blocking
 
-The scrapers support ad blocking to prevent ads from interfering with the scraping process. Two methods are available:
-
-### uBlock Origin Extension (Recommended)
-
-For comprehensive ad blocking, you can load the uBlock Origin browser extension:
-
-1. Download uBlock Origin for Chromium from [GitHub releases](https://github.com/AmpMn/AmpMn/releases) (look for `uBlock0_X.XX.X.chromium.zip`)
-2. Extract the `.zip` file to `./extensions/ublock_origin/` (the directory should contain `manifest.json`)
-3. The scraper will automatically load the extension
-
-Alternatively, specify a custom path in `config.yaml`:
-```yaml
-ublock_origin_path: /path/to/ublock_origin
-```
-
-### Route-Based Blocking (Fallback)
-
-If no extension is configured, the scrapers fall back to route-based blocking which intercepts requests to known ad domains. This is less comprehensive but requires no setup.
+The scrapers use Playwright route-based blocking to intercept requests to known ad domains (Google Ads, DoubleClick, etc.). This prevents ads from interfering with the scraping process and reduces bandwidth usage. No configuration required.
 
 ## Dashboard Features
 
