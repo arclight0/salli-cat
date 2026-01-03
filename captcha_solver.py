@@ -190,57 +190,63 @@ def extract_sitekey_from_page(page) -> str | None:
         return None
 
 
-def inject_captcha_response(page, token: str) -> bool:
+def inject_captcha_response(page, token: str, trigger_callback: bool = False) -> bool:
     """
     Inject the solved captcha token into the page.
 
     Args:
         page: Playwright page object
         token: The g-recaptcha-response token from 2captcha
+        trigger_callback: Whether to try triggering the callback (can cause errors on some sites)
 
     Returns:
         True if injection was successful
     """
     try:
-        result = page.evaluate(f"""
-            (token) => {{
-                // Find and fill the g-recaptcha-response textarea
-                const responseTextarea = document.querySelector('[name="g-recaptcha-response"]');
-                if (responseTextarea) {{
-                    responseTextarea.value = token;
-                    responseTextarea.style.display = 'block';  // Make visible for debugging
-                }}
+        result = page.evaluate("""
+            (args) => {
+                const token = args.token;
+                const triggerCallback = args.triggerCallback;
 
-                // Also try to find hidden textarea in iframe (for invisible recaptcha)
-                const hiddenTextareas = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
-                hiddenTextareas.forEach(ta => {{
+                // Find and fill ALL g-recaptcha-response textareas
+                const responseTextareas = document.querySelectorAll('[name="g-recaptcha-response"], #g-recaptcha-response');
+                responseTextareas.forEach(ta => {
                     ta.value = token;
-                }});
+                    ta.innerHTML = token;
+                });
+                console.log('Filled', responseTextareas.length, 'response textareas');
 
-                // Try to trigger the callback if it exists
-                if (typeof ___grecaptcha_cfg !== 'undefined') {{
-                    const clients = ___grecaptcha_cfg.clients;
-                    if (clients) {{
-                        for (const key in clients) {{
-                            const client = clients[key];
-                            if (client && client.callback) {{
-                                client.callback(token);
-                                return true;
-                            }}
-                        }}
-                    }}
-                }}
+                // Enable the submit button directly
+                // The server will validate the token when the form is submitted
+                const submitBtn = document.querySelector('.get-manual-btn, input[type="submit"][disabled]');
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.removeAttribute('disabled');
+                    console.log('Enabled submit button');
+                }
 
-                // Alternative: Look for callback in grecaptcha object
-                if (typeof grecaptcha !== 'undefined' && grecaptcha.enterprise) {{
-                    // Enterprise recaptcha
-                    return true;
-                }}
+                // Only try callbacks if explicitly requested (they can cause errors)
+                if (triggerCallback) {
+                    try {
+                        // Look for data-callback attribute on recaptcha element
+                        const recaptchaDiv = document.querySelector('.g-recaptcha[data-callback]');
+                        if (recaptchaDiv) {
+                            const callbackName = recaptchaDiv.getAttribute('data-callback');
+                            if (callbackName && typeof window[callbackName] === 'function') {
+                                console.log('Triggering callback:', callbackName);
+                                window[callbackName](token);
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Callback error (ignored):', e.message);
+                    }
+                }
 
-                return responseTextarea !== null;
-            }}
-        """, token)
+                return responseTextareas.length > 0;
+            }
+        """, {"token": token, "triggerCallback": trigger_callback})
 
+        logger.info(f"Token injection result: {result}")
         return result
 
     except Exception as e:

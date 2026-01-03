@@ -337,21 +337,53 @@ def wait_for_recaptcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> boo
         logger.debug("No reCAPTCHA found on page")
         return True
 
-    # Try automatic solving with 2captcha if available
-    if captcha_solver:
-        logger.info("Attempting automatic reCAPTCHA solve with 2captcha...")
+    # Wait for reCAPTCHA to fully initialize
+    # The iframe needs time to load its content and the checkbox to become interactive
+    logger.info("Waiting for reCAPTCHA to fully initialize...")
+    try:
+        # Wait for the anchor iframe (the one with the checkbox) to have proper dimensions
+        page.wait_for_function("""
+            () => {
+                const iframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+                if (!iframe) return false;
+                const rect = iframe.getBoundingClientRect();
+                return rect.width > 50 && rect.height > 50;
+            }
+        """, timeout=10000)
+        logger.info("reCAPTCHA anchor iframe ready")
+    except Exception:
+        logger.warning("Timeout waiting for reCAPTCHA to initialize, proceeding anyway")
+
+    # Extra wait for reCAPTCHA JS to fully load
+    time.sleep(2)
+
+    # Verify the sitekey is available before proceeding
+    sitekey = extract_sitekey_from_page(page)
+    if not sitekey:
+        logger.warning("Could not extract sitekey, waiting longer...")
+        time.sleep(3)
         sitekey = extract_sitekey_from_page(page)
 
-        if sitekey:
-            token = captcha_solver.solve_recaptcha(sitekey, page.url)
-            if token:
-                inject_captcha_response(page, token)
-                time.sleep(1)
+    # Try automatic solving with 2captcha if available
+    if captcha_solver and sitekey:
+        logger.info(f"Attempting automatic reCAPTCHA solve with 2captcha (sitekey: {sitekey[:20]}...)")
+        token = captcha_solver.solve_recaptcha(sitekey, page.url)
+        if token:
+            logger.info("Got token from 2captcha, injecting response...")
+            inject_captcha_response(page, token)
+            # Wait for the page to process the token and enable the button
+            time.sleep(3)
+            # Check if button is now enabled
+            submit_btn = page.query_selector('input.get-manual-btn:not([disabled])')
+            if submit_btn:
+                logger.info("Button enabled after 2captcha solve!")
                 return True
             else:
-                logger.warning("2captcha failed, falling back to manual solving")
+                logger.warning("Button still disabled after token injection, waiting for manual verification...")
         else:
-            logger.warning("Could not extract sitekey for 2captcha")
+            logger.warning("2captcha failed, falling back to manual solving")
+    elif captcha_solver and not sitekey:
+        logger.warning("Could not extract sitekey for 2captcha")
 
     # Fall back to manual solving
     logger.info("Waiting for manual reCAPTCHA solve...")
