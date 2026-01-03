@@ -49,6 +49,15 @@ manualzz_urls:
 # If not set, falls back to route-based ad blocking
 # ublock_origin_path: ./extensions/ublock_origin
 
+# ManualsBase target categories (case-insensitive matching)
+# Any category containing these words will be scraped
+manualsbase_categories:
+  - tv
+  - television
+  - monitor
+  - crt
+  - remote
+
 # Cloudflare Turnstile sitekeys for automatic solving
 # To find sitekey: Open DevTools (F12) on challenge page, check Network tab
 # for requests to challenges.cloudflare.com, look for "k=" or "sitekey=" param

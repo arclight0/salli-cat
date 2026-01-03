@@ -213,6 +213,10 @@
             background: #fef3c7;
             color: #92400e;
         }
+        .source-badge.manualsbase {
+            background: #d1fae5;
+            color: #065f46;
+        }
         .source-stats {
             background: white;
             padding: 15px;
@@ -299,6 +303,7 @@
                 <option value="">All Sources</option>
                 <option value="manualslib">ManualsLib</option>
                 <option value="manualzz">Manualzz</option>
+                <option value="manualsbase">ManualsBase</option>
             </select>
 
             <label>Brand:</label>
@@ -321,6 +326,7 @@
             <button class="btn btn-danger" onclick="clearManuals()">Clear All Manuals</button>
             <button class="btn btn-danger" onclick="clearManualsBySource('manualslib')">Clear ManualsLib</button>
             <button class="btn btn-danger" onclick="clearManualsBySource('manualzz')">Clear Manualzz</button>
+            <button class="btn btn-danger" onclick="clearManualsBySource('manualsbase')">Clear Manualsbase</button>
             <button class="btn btn-danger" onclick="clearAll()">Clear Everything</button>
         </div>
 

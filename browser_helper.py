@@ -155,6 +155,8 @@ def launch_browser_with_extension(
         permissions=["geolocation"],
         # Reduce detection
         ignore_https_errors=True,
+        # Enable download interception
+        accept_downloads=True,
     )
 
     return context, extension_loaded
