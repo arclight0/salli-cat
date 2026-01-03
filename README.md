@@ -1,5 +1,7 @@
 # Salli Cat
 
+<a href="https://www.youtube.com/watch?v=nVBalxt3NEU" target="_blank"><img src="nedm-cat.jpg" alt="Salli Cat"></a>
+
 *From "Salvator Librorum Cathodicorum" - Savior of Cathode Books*
 
 A Python-based tool for preserving TV manuals on the [Internet Archive](https://archive.org). Scrapes manuals from multiple sources, downloads PDFs locally, and uploads them to archive.org for long-term preservation and public access.
