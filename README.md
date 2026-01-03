@@ -1,11 +1,15 @@
 # TV Manual Scraper
 
-A Python-based scraper to download TV manuals from multiple sources (ManualsLib, Manualzz) with a web dashboard for monitoring progress.
+A Python-based scraper to download TV manuals from multiple sources with a web dashboard for monitoring progress.
 
 ## Supported Sources
 
-- **ManualsLib** (manualslib.com) - Brand discovery and TV manual scraping
-- **Manualzz** (manualzz.com) - CRT TV and monitor manual scraping
+| Site | Status | Notes |
+|------|--------|-------|
+| **ManualsLib** (manualslib.com) | :white_check_mark: Full automation | Brand discovery and TV manual scraping. Recommended: use both a reCAPTCHA solver (e.g. 2captcha) and a residential proxy. |
+| **ManualsBase** (manualsbase.com) | :white_check_mark: Full automation | Scrapes all brands with TV-related categories. Recommended: use a reCAPTCHA solver. Proxy not necessary. |
+| **Manualzz** (manualzz.com) | :warning: Partial support | CRT TV and monitor manual scraping. Works with manual captcha solving, but Cloudflare managed challenges prevent full automation. |
+| **Manualzilla** (manualzilla.com) | :x: Not yet implemented | TODO. Likely to have same Cloudflare challenges as Manualzz. |
 
 ## Project Structure
 
@@ -17,6 +21,7 @@ manualslib-scraper/
 ├── .env.example          # Example environment file
 ├── Procfile              # Process definitions for honcho
 ├── scraper.py            # ManualsLib Playwright scraper
+├── manualsbase_scraper.py # ManualsBase Playwright scraper
 ├── manualzz_scraper.py   # Manualzz Playwright scraper
 ├── archive_checker.py    # Background archive.org checker
 ├── captcha_solver.py     # 2captcha integration for auto-solving
@@ -86,6 +91,22 @@ uv run python scraper.py --clear-brands
 
 # Clear everything (manuals and brands)
 uv run python scraper.py --clear-all
+```
+
+### Running the ManualsBase Scraper
+
+```bash
+# Scrape all brands with TV-related categories
+uv run python manualsbase_scraper.py
+
+# Scrape listings only (populate database, no downloads)
+uv run python manualsbase_scraper.py --scrape-only
+
+# Download pending manuals only (skip scraping)
+uv run python manualsbase_scraper.py --download-only
+
+# Clear manualsbase records and start fresh
+uv run python manualsbase_scraper.py --clear
 ```
 
 ### Running the Manualzz Scraper
@@ -179,11 +200,12 @@ manualzz_urls:
 
 - **brands**: ManualsLib brand slugs (e.g., `https://www.manualslib.com/brand/rca/tv.html`)
 - **categories**: Category slugs to scrape for each brand. When using `--use-discovered`, the discovered category URLs are used instead.
+- **manualsbase_categories**: Keywords to match against ManualsBase category names (e.g., "tv", "monitor", "crt")
 - **manualzz_urls**: Direct catalog URLs from manualzz.com
 
 ## Captcha Handling
 
-ManualsLib uses reCAPTCHA to protect manual downloads. The scraper supports two modes:
+ManualsLib and ManualsBase use reCAPTCHA to protect manual downloads. The scrapers support two modes:
 
 ### Automatic Solving with 2captcha (Recommended)
 
@@ -275,7 +297,7 @@ If no extension is configured, the scrapers fall back to route-based blocking wh
 ## Dashboard Features
 
 - **Summary Stats**: Total manuals, downloaded count, archived count, pending count
-- **Stats by Source**: Breakdown of manuals by source (ManualsLib, Manualzz)
+- **Stats by Source**: Breakdown of manuals by source (ManualsLib, ManualsBase, Manualzz)
 - **Progress by Brand**: Visual progress bars showing completion
 - **Manual Table**: Filterable list of all manuals with source badges
 - **Filters**: Filter by source, brand, and download status
@@ -301,7 +323,7 @@ SQLite database (`manuals.db`) with two tables:
 | Column | Type | Description |
 |--------|------|-------------|
 | id | INTEGER | Primary key |
-| source | TEXT | Source site ("manualslib" or "manualzz") |
+| source | TEXT | Source site ("manualslib", "manualsbase", or "manualzz") |
 | source_id | TEXT | ID from source site |
 | brand | TEXT | Brand name/slug |
 | model | TEXT | Model name/number |
