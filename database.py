@@ -265,10 +265,10 @@ def update_manualslib_id(manual_id: int, manualslib_id: str):
 
 
 def get_manuals_needing_archive_check(limit: int = 100) -> list[dict]:
-    """Get manuals that have a manualslib_id but haven't been checked on archive.org recently.
+    """Get manuals that haven't been checked on archive.org recently.
 
     Returns manuals where:
-    - manualslib_id is set (so we can check archive.org)
+    - Has an ID we can check (manualslib_id or source_id)
     - archived = 0 (not already marked as archived)
     - downloaded = 0 (not already downloaded locally)
     - archive_checked_at is NULL or older than 7 days
@@ -277,7 +277,7 @@ def get_manuals_needing_archive_check(limit: int = 100) -> list[dict]:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM manuals
-        WHERE manualslib_id IS NOT NULL
+        WHERE (manualslib_id IS NOT NULL OR source_id IS NOT NULL)
           AND archived = 0
           AND downloaded = 0
           AND (archive_checked_at IS NULL
@@ -316,8 +316,11 @@ def get_archive_check_stats() -> dict:
     conn = get_connection()
     cursor = conn.cursor()
 
-    # Total with manualslib_id (checkable)
-    cursor.execute("SELECT COUNT(*) FROM manuals WHERE manualslib_id IS NOT NULL")
+    # Total with a checkable ID (manualslib_id or source_id)
+    cursor.execute("""
+        SELECT COUNT(*) FROM manuals
+        WHERE manualslib_id IS NOT NULL OR source_id IS NOT NULL
+    """)
     total_checkable = cursor.fetchone()[0]
 
     # Already archived
@@ -334,7 +337,9 @@ def get_archive_check_stats() -> dict:
     # Never checked
     cursor.execute("""
         SELECT COUNT(*) FROM manuals
-        WHERE manualslib_id IS NOT NULL AND archive_checked_at IS NULL AND archived = 0
+        WHERE (manualslib_id IS NOT NULL OR source_id IS NOT NULL)
+          AND archive_checked_at IS NULL
+          AND archived = 0
     """)
     never_checked = cursor.fetchone()[0]
 

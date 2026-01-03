@@ -1,6 +1,17 @@
-# TV Manual Scraper
+# Salli Cat
 
-A Python-based scraper to download TV manuals from multiple sources with a web dashboard for monitoring progress.
+*From "Salvator Librorum Cathodicorum" - Savior of Cathode Books*
+
+A Python-based tool for preserving TV manuals on the [Internet Archive](https://archive.org). Scrapes manuals from multiple sources, downloads PDFs locally, and uploads them to archive.org for long-term preservation and public access.
+
+## Features
+
+- **Multi-source scraping**: Download manuals from ManualsLib, ManualsBase, and Manualzz
+- **Automatic CAPTCHA solving**: Integration with 2captcha for hands-free operation
+- **Internet Archive uploading**: Bulk upload to archive.org with proper metadata and deduplication
+- **Web dashboard**: Monitor scraping progress, filter by source/brand, track upload status
+- **Content-addressable storage**: PDFs stored by SHA1 hash to avoid duplicates
+- **Resume capability**: Interrupted scrapes and uploads can be resumed
 
 ## Supported Sources
 
@@ -24,6 +35,7 @@ manualslib-scraper/
 ├── manualsbase_scraper.py # ManualsBase Playwright scraper
 ├── manualzz_scraper.py   # Manualzz Playwright scraper
 ├── archive_checker.py    # Background archive.org checker
+├── ia_uploader.py        # Internet Archive uploader
 ├── captcha_solver.py     # 2captcha integration for auto-solving
 ├── browser_helper.py     # Browser launch helper with extension support
 ├── database.py           # SQLite database layer
@@ -52,6 +64,14 @@ uv run playwright install chromium
 ```
 
 ## Usage
+
+### Running the Dashboard
+
+```bash
+uv run python dashboard.py
+```
+
+Then open http://localhost:5000 in your browser to monitor scraping progress, view manuals, and track uploads.
 
 ### Brand Discovery
 
@@ -128,13 +148,24 @@ uv run python manualzz_scraper.py --download-only
 uv run python manualzz_scraper.py --clear
 ```
 
-### Running the Dashboard
+### Uploading to Internet Archive
+
+After downloading manuals, upload them to archive.org for public preservation:
 
 ```bash
-uv run python dashboard.py
+# Preview what would be uploaded (dry run)
+uv run python ia_uploader.py --source manualsbase --dry-run
+
+# Upload all pending manuals from a source
+uv run python ia_uploader.py --source manualsbase
+uv run python ia_uploader.py --source manualslib
+uv run python ia_uploader.py --source manualzz
+
+# Limit number of uploads
+uv run python ia_uploader.py --source manualsbase --limit 50
 ```
 
-Then open http://localhost:5000 in your browser.
+**Note**: Requires Internet Archive credentials. Run `ia configure` to set up authentication.
 
 ### Running the Archive.org Checker
 
@@ -342,10 +373,26 @@ SQLite database (`manuals.db`) with two tables:
 
 ## Archive.org Integration
 
+### Checking for Existing Archives
+
 Before downloading, the scraper checks if the manual already exists on archive.org at:
-`https://archive.org/details/manualslib-id-{manualslib_id}`
+- ManualsLib: `https://archive.org/details/manualslib-id-{manualslib_id}`
+- ManualsBase: `https://archive.org/details/manualsbase-id-{source_id}`
+- Manualzz: `https://archive.org/details/manualzz-id-{source_id}`
 
 If archived, it skips the download and records the archive URL.
+
+### Uploading to Internet Archive
+
+See [Uploading to Internet Archive](#uploading-to-internet-archive) in the Usage section for commands.
+
+The uploader:
+- Creates source-specific identifiers (e.g., `manualsbase-id-12345`)
+- Includes checksums (MD5/SHA1) as external identifiers for deduplication
+- Skips items that already exist on archive.org
+- Updates the database with archive URLs after successful upload
+
+**Note**: Requires `internetarchive` library and IA credentials configured via `ia configure`.
 
 ## Downloaded Files
 

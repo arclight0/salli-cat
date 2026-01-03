@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Internet Archive uploader for ManualsLib manuals."""
+"""Internet Archive uploader for manual PDFs (ManualsLib, ManualsBase, etc.)."""
 
 import logging
 import re
@@ -53,22 +53,48 @@ def build_upload_metadata(manual: dict) -> dict:
     Returns dict with: identifier, title, metadata, local_file, remote_filename
     """
     file_path = manual.get("file_path")
+    source = manual.get("source", "manualslib")
 
-    # Create identifier from manualslib_id
-    manualslib_id = manual.get("manualslib_id") or manual.get("source_id")
-    if manualslib_id:
-        identifier = f"manualslib-id-{manualslib_id}"
+    # Create identifier based on source
+    if source == "manualsbase":
+        source_id = manual.get("source_id")
+        if source_id:
+            identifier = f"manualsbase-id-{source_id}"
+        else:
+            identifier = sanitize_identifier(f"manualsbase-{manual['brand']}-{manual['model']}")
+        subjects = ["manualsbase", "manuals"]
+    elif source == "manualzz":
+        source_id = manual.get("source_id")
+        if source_id:
+            identifier = f"manualzz-id-{source_id}"
+        else:
+            identifier = sanitize_identifier(f"manualzz-{manual['brand']}-{manual['model']}")
+        subjects = ["manualzz", "manuals"]
     else:
-        # Fallback: use brand_model
-        identifier = sanitize_identifier(f"manualslib-{manual['brand']}-{manual['model']}")
+        # ManualsLib (default)
+        manualslib_id = manual.get("manualslib_id") or manual.get("source_id")
+        if manualslib_id:
+            identifier = f"manualslib-id-{manualslib_id}"
+        else:
+            identifier = sanitize_identifier(f"manualslib-{manual['brand']}-{manual['model']}")
+        subjects = ["manualslib", "manuals"]
 
     # Build title: "Brand Model Document Type"
     brand = sanitize_xml_string(manual.get("brand", "Unknown"))
     model = sanitize_xml_string(manual.get("model", ""))
     doc_type = sanitize_xml_string(manual.get("doc_type", "Manual"))
-    title = f"{brand} {model} {doc_type}".strip()
 
-    # Remote filename: use original_filename from ManualsLib, fallback to local filename
+    # Clean up model field - remove brand prefix if present
+    if model.lower().startswith(brand.lower()):
+        model = model[len(brand):].strip()
+
+    # Don't append doc_type if model already contains it
+    if doc_type.lower() in model.lower():
+        title = f"{brand} {model}".strip()
+    else:
+        title = f"{brand} {model} {doc_type}".strip()
+
+    # Remote filename: use original_filename, fallback to local filename
     remote_filename = manual.get("original_filename")
     if not remote_filename:
         remote_filename = Path(file_path).name if file_path else "manual.pdf"
@@ -78,7 +104,7 @@ def build_upload_metadata(manual: dict) -> dict:
     metadata = {
         "mediatype": "texts",
         "title": title,
-        "subject": ["manualslib", "manuals"],
+        "subject": subjects,
     }
 
     # Add description

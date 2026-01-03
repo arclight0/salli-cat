@@ -20,8 +20,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ARCHIVE_ORG_BASE = "https://archive.org/details/manualslib-id-"
-
 # Rate limiting settings
 DEFAULT_DELAY_MIN = 5.0   # Minimum seconds between requests
 DEFAULT_DELAY_MAX = 15.0  # Maximum seconds between requests
@@ -29,23 +27,43 @@ DEFAULT_BATCH_SIZE = 50   # How many to check before longer pause
 DEFAULT_BATCH_PAUSE = 60  # Seconds to pause between batches
 
 
-def check_archive_org(manualslib_id: str) -> tuple[bool, str]:
-    """Check if a manual exists on archive.org. Returns (exists, archive_url)."""
-    archive_url = f"{ARCHIVE_ORG_BASE}{manualslib_id}"
+def get_archive_url_for_manual(manual: dict) -> str | None:
+    """Get the expected archive.org URL for a manual based on its source."""
+    source = manual.get("source", "manualslib")
+
+    if source == "manualsbase":
+        source_id = manual.get("source_id")
+        if source_id:
+            return f"https://archive.org/details/manualsbase-id-{source_id}"
+    elif source == "manualzz":
+        source_id = manual.get("source_id")
+        if source_id:
+            return f"https://archive.org/details/manualzz-id-{source_id}"
+    else:
+        # ManualsLib (default)
+        manualslib_id = manual.get("manualslib_id") or manual.get("source_id")
+        if manualslib_id:
+            return f"https://archive.org/details/manualslib-id-{manualslib_id}"
+
+    return None
+
+
+def check_archive_org(archive_url: str) -> bool:
+    """Check if an item exists on archive.org. Returns True if exists."""
     try:
         req = urllib.request.Request(archive_url, method='HEAD')
-        req.add_header('User-Agent', 'Mozilla/5.0 (compatible; ManualsLibScraper/1.0)')
+        req.add_header('User-Agent', 'Mozilla/5.0 (compatible; Salica/1.0)')
         with urllib.request.urlopen(req, timeout=10) as response:
             # 200 means it exists
-            return True, archive_url
+            return True
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            return False, archive_url
+            return False
         logger.warning(f"HTTP error checking archive.org: {e.code}")
-        return False, archive_url
+        return False
     except Exception as e:
         logger.warning(f"Error checking archive.org: {e}")
-        return False, archive_url
+        return False
 
 
 def random_delay(min_sec: float, max_sec: float):
@@ -96,10 +114,16 @@ def run_checker(
                 logger.info(f"Reached limit of {limit} checks.")
                 break
 
-            manualslib_id = manual["manualslib_id"]
-            logger.info(f"Checking: {manual['brand']} {manual['model']} (ID: {manualslib_id})")
+            archive_url = get_archive_url_for_manual(manual)
+            if not archive_url:
+                logger.warning(f"  Skipping {manual['brand']} {manual['model']} - no ID available")
+                continue
 
-            is_archived, archive_url = check_archive_org(manualslib_id)
+            source = manual.get("source", "manualslib")
+            manual_id = manual.get("manualslib_id") or manual.get("source_id")
+            logger.info(f"Checking: {manual['brand']} {manual['model']} ({source}: {manual_id})")
+
+            is_archived = check_archive_org(archive_url)
 
             if is_archived:
                 logger.info(f"  FOUND on archive.org: {archive_url}")
@@ -137,10 +161,10 @@ def print_stats():
 
     print("\nArchive.org Check Statistics")
     print("=" * 40)
-    print(f"Total checkable (have manualslib_id): {stats['total_checkable']}")
-    print(f"Already archived:                     {stats['archived']}")
-    print(f"Checked, not archived:                {stats['checked_not_archived']}")
-    print(f"Never checked:                        {stats['never_checked']}")
+    print(f"Total checkable (have source ID):  {stats['total_checkable']}")
+    print(f"Already archived:                  {stats['archived']}")
+    print(f"Checked, not archived:             {stats['checked_not_archived']}")
+    print(f"Never checked:                     {stats['never_checked']}")
     print()
 
 
