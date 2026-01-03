@@ -19,6 +19,7 @@ from playwright.sync_api import sync_playwright, Page
 
 import database
 from browser_helper import launch_browser_with_extension, get_extension_path, setup_route_ad_blocking, apply_stealth
+from turnstile_solver import is_solver_available, solve_cloudflare_with_api, SOLVER_API_URL
 
 logging.basicConfig(
     level=logging.INFO,
@@ -120,10 +121,93 @@ def scrape_catalog_page(page: Page, catalog_url: str) -> int:
         page.goto(current_url, wait_until="domcontentloaded")
         random_delay(1, 2)
 
-        # Find all manual/document listings (thumbnails)
-        # Look for links to individual documents
-        doc_links = page.query_selector_all('a[href*="/doc/"]')
+        # Check for Cloudflare challenge after navigation
+        if check_cloudflare_challenge(page):
+            if not wait_for_cloudflare_solved(page):
+                logger.error("Could not pass Cloudflare challenge, stopping")
+                return manual_count
+            # Re-navigate after solving challenge
+            page.goto(current_url, wait_until="domcontentloaded")
+            random_delay(1, 2)
 
+        # Wait for page content to be rendered by JS
+        try:
+            page.wait_for_selector(
+                '.media, .media-similar, a[href*="/doc/"], .container, .catalog-list',
+                timeout=45000
+            )
+            logger.info("Page content rendered")
+        except Exception:
+            logger.warning("Timeout waiting for page content selectors, will try anyway...")
+            # Give extra time for slow JS
+            time.sleep(3)
+
+        # Find all manual/document listings
+        # Structure: .media.media-similar contains a.media-link and .media-body with h4
+        media_containers = page.query_selector_all('.media.media-similar, .media-similar')
+
+        logger.info(f"Found {len(media_containers)} media containers")
+
+        # Fallback: also try direct link selection if no containers found
+        if not media_containers:
+            doc_links = page.query_selector_all('a[href*="/doc/"]')
+            logger.info(f"Fallback: found {len(doc_links)} direct doc links")
+        else:
+            doc_links = []
+
+        # Helper function to add a manual to database
+        def add_manual_to_db(manual_url: str, title: str):
+            nonlocal manual_count
+
+            # Extract manualzz ID
+            manualzz_id = extract_manualzz_id(manual_url)
+
+            # Try to extract brand from title (first word often is brand)
+            brand = "Unknown"
+            title_parts = title.split()
+            if title_parts:
+                brand = title_parts[0]
+
+            # Add to database immediately for real-time progress
+            manual_id = database.add_manual(
+                brand=brand,
+                model=title,  # Use title as model for manualzz
+                manual_url=manual_url,
+                source="manualzz",
+                source_id=manualzz_id,
+                category=category,
+            )
+            if manual_id:
+                logger.info(f"Added: {title[:50]}...")
+            manual_count += 1
+
+        # Process media containers first (preferred method)
+        for container in media_containers:
+            link = container.query_selector('a.media-link, a[href*="/doc/"]')
+            if not link:
+                continue
+
+            href = link.get_attribute("href")
+            if not href:
+                continue
+
+            manual_url = href if href.startswith("http") else BASE_URL + href
+
+            # Skip if already seen
+            if manual_url in seen_urls:
+                continue
+            seen_urls.add(manual_url)
+
+            # Get title from h4 in media-body
+            title_elem = container.query_selector('h4, .media-heading h4, .media-body h4')
+            title = title_elem.inner_text().strip() if title_elem else ""
+
+            if not title:
+                title = link.get_attribute("title") or "Unknown"
+
+            add_manual_to_db(manual_url, title)
+
+        # Process fallback direct links
         for link in doc_links:
             href = link.get_attribute("href")
             if not href:
@@ -151,27 +235,7 @@ def scrape_catalog_page(page: Page, catalog_url: str) -> int:
             if not title:
                 title = "Unknown"
 
-            # Extract manualzz ID
-            manualzz_id = extract_manualzz_id(manual_url)
-
-            # Try to extract brand from title (first word often is brand)
-            brand = "Unknown"
-            title_parts = title.split()
-            if title_parts:
-                brand = title_parts[0]
-
-            # Add to database immediately for real-time progress
-            manual_id = database.add_manual(
-                brand=brand,
-                model=title,  # Use title as model for manualzz
-                manual_url=manual_url,
-                source="manualzz",
-                source_id=manualzz_id,
-                category=category,
-            )
-            if manual_id:
-                logger.info(f"Added: {title[:50]}...")
-            manual_count += 1
+            add_manual_to_db(manual_url, title)
 
         # Check for next page in pagination
         # Look for pagination links at bottom
@@ -207,7 +271,154 @@ def scrape_catalog_page(page: Page, catalog_url: str) -> int:
                 current_url = None
 
     logger.info(f"Found {manual_count} manuals in catalog")
+
+    # Pause for debugging if no manuals found
+    if manual_count == 0:
+        print("\n" + "=" * 60)
+        print("WARNING: No manuals found on this page!")
+        print("Browser will stay open for you to inspect the HTML.")
+        print("Press Enter to continue to the next catalog...")
+        print("=" * 60)
+        input()
+
     return manual_count
+
+
+def check_cloudflare_challenge(page: Page) -> bool:
+    """Check if Cloudflare challenge/hCaptcha is present on the page."""
+    # Check for hCaptcha iframe
+    hcaptcha_frame = page.query_selector('iframe[src*="hcaptcha.com"], iframe[src*="hcaptcha"]')
+    if hcaptcha_frame:
+        return True
+
+    # Check for Cloudflare challenge page indicators
+    cf_challenge = page.query_selector('#cf-challenge-running, .cf-browser-verification, #challenge-running')
+    if cf_challenge:
+        return True
+
+    # Check page title for Cloudflare
+    try:
+        title = page.title()
+        if 'just a moment' in title.lower() or 'cloudflare' in title.lower():
+            return True
+    except Exception:
+        pass
+
+    # Check for challenge form
+    challenge_form = page.query_selector('form#challenge-form, form[action*="challenge"]')
+    if challenge_form:
+        return True
+
+    return False
+
+
+def wait_for_cloudflare_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT, use_solver: bool = True) -> bool:
+    """Wait for Cloudflare challenge/hCaptcha to be solved. Returns True if solved, False if timeout."""
+    logger.info("Cloudflare challenge detected...")
+
+    # Try automatic solver first if available
+    if use_solver and is_solver_available():
+        logger.info("Turnstile solver API available, attempting automatic solve...")
+        print("\n" + "=" * 60)
+        print("CLOUDFLARE DETECTED - Attempting automatic solve via Turnstile API...")
+        print("=" * 60 + "\n")
+
+        if solve_cloudflare_with_api(page, timeout=60):
+            # Wait a moment and check if challenge is gone
+            time.sleep(3)
+            if not check_cloudflare_challenge(page):
+                logger.info("Cloudflare challenge solved automatically!")
+                # Wait for page content
+                try:
+                    page.wait_for_selector(
+                        '.media, .container, nav, header, .content, .catalog, '
+                        'a[href*="/doc/"], .media-similar',
+                        timeout=45000
+                    )
+                    logger.info("Page content loaded")
+                    time.sleep(3)
+                    return True
+                except Exception:
+                    time.sleep(3)
+                    return True
+        else:
+            logger.warning("Automatic solve failed, falling back to manual...")
+    elif use_solver:
+        logger.info("Turnstile solver API not available at " + SOLVER_API_URL)
+        logger.info("Start the solver with: cd turnstile-solver && python api_solver.py")
+
+    # Fall back to manual solving
+    print("\n" + "=" * 60)
+    print("CLOUDFLARE/HCAPTCHA DETECTED - Please solve it in the browser window")
+    print("=" * 60 + "\n")
+
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        # Check if we're still on a challenge page
+        if not check_cloudflare_challenge(page):
+            logger.info("Cloudflare challenge appears to be solved, waiting for page content...")
+
+            # Wait for actual page content to load (not just challenge gone)
+            # Look for elements that indicate the real Manualzz page has rendered
+            try:
+                # Wait for any of these indicators that the real page loaded
+                page.wait_for_selector(
+                    'body:not(:has(title:has-text("Just a moment"))), '
+                    '.media, .container, nav, header, .content, .catalog, '
+                    'a[href*="/doc/"], .media-similar',
+                    timeout=45000
+                )
+                logger.info("Page content loaded")
+                # Extra wait for JS rendering
+                time.sleep(3)
+                return True
+            except Exception as e:
+                logger.warning(f"Timeout waiting for page content: {e}")
+                # Still return True since challenge is solved, page might just be slow
+                time.sleep(3)
+                return True
+
+        time.sleep(2)
+
+    logger.warning("Cloudflare challenge timeout")
+    return False
+
+
+def wait_for_hcaptcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> bool:
+    """Wait for human to solve hCaptcha. Returns True if solved, False if timeout."""
+    logger.info("Waiting for hCaptcha to be solved...")
+    print("\n" + "=" * 60)
+    print("HCAPTCHA DETECTED - Please solve it in the browser window")
+    print("=" * 60 + "\n")
+
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        # Check if hCaptcha iframe is still present
+        hcaptcha_frame = page.query_selector('iframe[src*="hcaptcha.com"]')
+        if not hcaptcha_frame:
+            logger.info("hCaptcha appears to be solved (iframe gone)")
+            return True
+
+        # Check if hCaptcha has a response token
+        try:
+            hcaptcha_response = page.evaluate("""
+                () => {
+                    const response = document.querySelector('[name="h-captcha-response"], [name="g-recaptcha-response"]');
+                    return response && response.value.length > 0;
+                }
+            """)
+            if hcaptcha_response:
+                logger.info("hCaptcha solved (response token present)")
+                return True
+        except Exception:
+            pass
+
+        time.sleep(2)
+
+    logger.warning("hCaptcha timeout - skipping this manual")
+    return False
 
 
 def wait_for_captcha_solved(page: Page, timeout: int = CAPTCHA_TIMEOUT) -> bool:
@@ -260,8 +471,25 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
     page.goto(manual["manual_url"], wait_until="domcontentloaded")
     random_delay(1, 2)
 
-    # Look for download button with bi-download class
-    download_btn = page.query_selector('a.bi-download, button.bi-download, [class*="bi-download"], a:has-text("Download")')
+    # Check for Cloudflare challenge after navigation
+    if check_cloudflare_challenge(page):
+        if not wait_for_cloudflare_solved(page):
+            logger.warning("Could not pass Cloudflare challenge, skipping")
+            return None
+        # Re-navigate after solving challenge
+        page.goto(manual["manual_url"], wait_until="domcontentloaded")
+        random_delay(1, 2)
+
+    # Wait for download button to appear (JS rendering)
+    download_btn_selector = "[title='Download PDF'], a.bi-download, button.bi-download, [class*='bi-download'], a:has-text('Download')"
+    try:
+        page.wait_for_selector(download_btn_selector, timeout=30000)
+        logger.info("Download button appeared")
+    except Exception:
+        logger.warning("Timeout waiting for download button")
+
+    # Look for download button
+    download_btn = page.query_selector(download_btn_selector)
 
     if not download_btn:
         logger.warning(f"No download button found for {manual['title']}")
@@ -286,11 +514,26 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
             page.goto(download_page_url, wait_until="domcontentloaded")
             random_delay(1, 2)
 
+            # Check for Cloudflare challenge on download page
+            if check_cloudflare_challenge(page):
+                if not wait_for_cloudflare_solved(page):
+                    logger.warning("Could not pass Cloudflare challenge on download page")
+                    return None
+                page.goto(download_page_url, wait_until="domcontentloaded")
+                random_delay(1, 2)
+
     # Now we should be on the download page with captcha
-    # Check for captcha
+    # Check for reCAPTCHA
     captcha_frame = page.query_selector('iframe[src*="recaptcha"]')
     if captcha_frame:
         if not wait_for_captcha_solved(page):
+            return None
+        random_delay(1, 2)
+
+    # Check for hCaptcha (separate from Cloudflare challenge)
+    hcaptcha_frame = page.query_selector('iframe[src*="hcaptcha.com"]')
+    if hcaptcha_frame:
+        if not wait_for_hcaptcha_solved(page):
             return None
         random_delay(1, 2)
 

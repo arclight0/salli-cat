@@ -48,3 +48,10 @@ manualzz_urls:
 # The directory should contain manifest.json
 # If not set, falls back to route-based ad blocking
 # ublock_origin_path: ./extensions/ublock_origin
+
+# Cloudflare Turnstile sitekeys for automatic solving
+# To find sitekey: Open DevTools (F12) on challenge page, check Network tab
+# for requests to challenges.cloudflare.com, look for "k=" or "sitekey=" param
+# Or run in Console: document.querySelector('iframe').src
+turnstile_sitekeys:
+  # manualzz.com: "0x4AAAAAAA..."  # Uncomment and add your sitekey
