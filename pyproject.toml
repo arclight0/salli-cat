@@ -1,9 +1,10 @@
 [project]
-name = "manualslib-scraper"
+name = "salli-cat"
 version = "0.1.0"
-description = "Scrape TV manuals from manualslib.com"
+description = "Salli Cat - CRT manual preservation tool"
 requires-python = ">=3.11"
 dependencies = [
+    "click",
     "playwright",
     "playwright-stealth",
     "flask",
@@ -14,5 +15,11 @@ dependencies = [
 ]
 
 [project.scripts]
-scrape = "scraper:main"
-dashboard = "dashboard:app.run"
+salli = "cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+include = ["*.py", "templates/*"]

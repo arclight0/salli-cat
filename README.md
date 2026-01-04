@@ -27,8 +27,9 @@ A Python-based tool for preserving TV manuals on the [Internet Archive](https://
 ## Project Structure
 
 ```
-manualslib-scraper/
+salli-cat/
 ├── pyproject.toml        # Project config and dependencies
+├── cli.py                # Main CLI entry point (salli command)
 ├── config.yaml           # Brand list and URL configuration
 ├── .env                  # Environment variables (API keys) - not in git
 ├── .env.example          # Example environment file
@@ -65,87 +66,87 @@ uv run playwright install chromium
 
 ## Usage
 
+All commands are run through the `salli` CLI. Use `uv run salli` to run commands:
+
+```bash
+# Show all available commands
+uv run salli --help
+
+# Show current status
+uv run salli status
+```
+
 ### Running the Dashboard
 
 ```bash
-uv run python dashboard.py
+uv run salli dashboard
 ```
 
 Then open http://localhost:5000 in your browser to monitor scraping progress, view manuals, and track uploads.
 
+Options:
+- `--host` - Host to bind to (default: 127.0.0.1)
+- `--port` - Port to bind to (default: 5000)
+- `--debug` - Run in debug mode
+
 ### Brand Discovery
 
-Automatically discover all brands on manualslib that have TV manuals:
+Automatically discover all brands on ManualsLib that have TV manuals:
 
 ```bash
 # Discover all brands with TV category (saves to database)
-uv run python manualslib_scraper.py --discover-brands
+uv run salli scrape manualslib --discover-brands
 
 # Then scrape all discovered brands
-uv run python manualslib_scraper.py --use-discovered --index-only
+uv run salli scrape manualslib --use-discovered --index-only
 ```
 
-### Running the ManualsLib Scraper
+### Scraping ManualsLib
 
 ```bash
 # Scrape all brands in config.yaml
-uv run python manualslib_scraper.py
+uv run salli scrape manualslib
 
 # Scrape specific brands only
-uv run python manualslib_scraper.py --brands rca sharp panasonic
+uv run salli scrape manualslib --brands rca --brands sharp --brands panasonic
 
-# Scrape all discovered brands (from --discover-brands)
-uv run python manualslib_scraper.py --use-discovered
+# Scrape all discovered brands (from discover-brands)
+uv run salli scrape manualslib --use-discovered
 
 # Build index only (populate database, no downloads)
-uv run python manualslib_scraper.py --index-only
+uv run salli scrape manualslib --index-only
 
 # Download pending manuals only (skip scraping)
-uv run python manualslib_scraper.py --download-only
-
-# Clear manualslib records and start fresh
-uv run python manualslib_scraper.py --clear --index-only
-
-# Clear discovered brands
-uv run python manualslib_scraper.py --clear-brands
-
-# Clear everything (manuals and brands)
-uv run python manualslib_scraper.py --clear-all
+uv run salli scrape manualslib --download-only
 ```
 
-### Running the ManualsBase Scraper
+### Scraping ManualsBase
 
 ```bash
 # Scrape all brands with TV-related categories
-uv run python manualsbase_scraper.py
+uv run salli scrape manualsbase
 
 # Build index only (populate database, no downloads)
-uv run python manualsbase_scraper.py --index-only
+uv run salli scrape manualsbase --index-only
 
 # Download pending manuals only (skip scraping)
-uv run python manualsbase_scraper.py --download-only
-
-# Clear manualsbase records and start fresh
-uv run python manualsbase_scraper.py --clear
+uv run salli scrape manualsbase --download-only
 ```
 
-### Running the Manualzz Scraper
+### Scraping Manualzz
 
 ```bash
 # Scrape catalog URLs from config.yaml
-uv run python manualzz_scraper.py
+uv run salli scrape manualzz
 
 # Scrape specific catalog URLs
-uv run python manualzz_scraper.py --urls "https://manualzz.com/catalog/..."
+uv run salli scrape manualzz --urls "https://manualzz.com/catalog/..."
 
 # Build index only (populate database, no downloads)
-uv run python manualzz_scraper.py --index-only
+uv run salli scrape manualzz --index-only
 
 # Download pending manuals only (skip scraping)
-uv run python manualzz_scraper.py --download-only
-
-# Clear manualzz records and start fresh
-uv run python manualzz_scraper.py --clear
+uv run salli scrape manualzz --download-only
 ```
 
 ### Uploading to Internet Archive
@@ -154,35 +155,51 @@ After downloading manuals, upload them to archive.org for public preservation:
 
 ```bash
 # Preview what would be uploaded (dry run)
-uv run python ia_uploader.py --source manualsbase --dry-run
+uv run salli upload --source manualsbase --dry-run
 
 # Upload all pending manuals from a source
-uv run python ia_uploader.py --source manualsbase
-uv run python ia_uploader.py --source manualslib
-uv run python ia_uploader.py --source manualzz
+uv run salli upload --source manualsbase
+uv run salli upload --source manualslib
+uv run salli upload --source manualzz
 
 # Limit number of uploads
-uv run python ia_uploader.py --source manualsbase --limit 50
+uv run salli upload --source manualsbase --limit 50
 ```
 
-**Note**: Requires Internet Archive credentials. Run `ia configure` to set up authentication.
+**Note**: Requires Internet Archive credentials. Run `uv run ia configure` to set up authentication.
 
-### Running the Archive.org Checker
+### Checking Archive.org
 
 The archive checker runs as a background process, slowly checking if manuals already exist on archive.org. This pre-identifies archived manuals so they can be skipped during downloads.
 
 ```bash
 # Check all pending manuals once (with default rate limiting)
-uv run python archive_checker.py
+uv run salli check-archive
 
 # Run continuously, checking new manuals as they appear
-uv run python archive_checker.py --continuous
+uv run salli check-archive --continuous
 
 # Check with faster rate (be careful not to hit rate limits)
-uv run python archive_checker.py --delay-min 2 --delay-max 5
+uv run salli check-archive --delay-min 2 --delay-max 5
 
 # Just show current statistics
-uv run python archive_checker.py --stats
+uv run salli check-archive --stats
+```
+
+### Clearing Database Records
+
+```bash
+# Clear all records (with confirmation prompt)
+uv run salli clear all
+
+# Clear manual records from a specific source
+uv run salli clear manuals --source manualslib
+
+# Clear all manual records
+uv run salli clear manuals
+
+# Clear discovered brands
+uv run salli clear brands
 ```
 
 ### Running Multiple Processes with Honcho
@@ -190,9 +207,6 @@ uv run python archive_checker.py --stats
 Use the `Procfile` to run the dashboard and archive checker together:
 
 ```bash
-# Install dependencies (includes honcho)
-uv sync
-
 # Run all processes defined in Procfile
 uv run honcho start
 
