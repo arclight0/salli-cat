@@ -679,11 +679,13 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, ca
 
     temp_path, original_filename = result
 
-    # Strip ManualsLib watermark before computing checksums
+    # Compute original checksums before any modifications
+    original_sha1, original_md5 = None, None
     if STRIP_WATERMARKS:
+        original_sha1, original_md5 = compute_checksums(temp_path)
         strip_manualslib_watermark(temp_path)
 
-    # Compute checksums
+    # Compute checksums of final file (after stripping if enabled)
     sha1, md5 = compute_checksums(temp_path)
     file_size = temp_path.stat().st_size
 
@@ -699,9 +701,11 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, ca
         shutil.move(str(temp_path), str(final_path))
 
     logger.info(f"Downloaded: {final_path} ({file_size} bytes, SHA1: {sha1[:8]}...)")
+    if original_sha1:
+        logger.info(f"Original SHA1 (pre-strip): {original_sha1[:8]}...")
     logger.info(f"Original filename: {original_filename}")
 
-    return str(final_path), sha1, md5, file_size, original_filename
+    return str(final_path), sha1, md5, file_size, original_filename, original_sha1, original_md5
 
 
 def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = True, category_urls: list[str] = None, categories: list[str] = None, captcha_solver: TwoCaptchaSolver = None):
@@ -779,8 +783,8 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
                 captcha_solver=captcha_solver
             )
             if result:
-                file_path, sha1, md5, file_size, original_filename = result
-                database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
+                file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5 = result
+                database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5)
                 consecutive_failures = 0  # Reset on success
                 increment_download_count()
             else:
@@ -1004,8 +1008,8 @@ def main():
                                 captcha_solver=captcha_solver
                             )
                             if result:
-                                file_path, sha1, md5, file_size, original_filename = result
-                                database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
+                                file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5 = result
+                                database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5)
                                 consecutive_failures = 0  # Reset on success
                                 increment_download_count()
                             else:

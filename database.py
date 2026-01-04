@@ -75,6 +75,8 @@ def init_db():
         ("file_sha1", "TEXT"),
         ("file_md5", "TEXT"),
         ("file_size", "INTEGER"),
+        ("original_file_sha1", "TEXT"),
+        ("original_file_md5", "TEXT"),
         ("scraped_at", "TEXT"),
         ("downloaded_at", "TEXT"),
         ("archive_checked_at", "TEXT"),
@@ -227,15 +229,15 @@ def get_brand_stats() -> dict:
     }
 
 
-def update_downloaded(manual_id: int, file_path: str, file_sha1: str = None, file_md5: str = None, file_size: int = None, original_filename: str = None):
+def update_downloaded(manual_id: int, file_path: str, file_sha1: str = None, file_md5: str = None, file_size: int = None, original_filename: str = None, original_file_sha1: str = None, original_file_md5: str = None):
     conn = get_connection()
     cursor = conn.cursor()
     downloaded_at = datetime.now().isoformat()
     cursor.execute("""
         UPDATE manuals
-        SET downloaded = 1, file_path = ?, file_sha1 = ?, file_md5 = ?, file_size = ?, downloaded_at = ?, original_filename = ?
+        SET downloaded = 1, file_path = ?, file_sha1 = ?, file_md5 = ?, file_size = ?, downloaded_at = ?, original_filename = ?, original_file_sha1 = ?, original_file_md5 = ?
         WHERE id = ?
-    """, (file_path, file_sha1, file_md5, file_size, downloaded_at, original_filename, manual_id))
+    """, (file_path, file_sha1, file_md5, file_size, downloaded_at, original_filename, original_file_sha1, original_file_md5, manual_id))
     conn.commit()
     conn.close()
 
