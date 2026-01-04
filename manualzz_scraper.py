@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scraper for manualzz.com TV manuals."""
+"""Scraper for manualzz.com CRT manuals."""
 
 import argparse
 import hashlib
@@ -746,7 +746,7 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape TV manuals from Manualzz")
+    parser = argparse.ArgumentParser(description="Scrape CRT manuals from Manualzz")
     parser.add_argument("--urls", nargs="*", help="Specific catalog URLs to scrape (overrides config)")
     parser.add_argument("--index-only", action="store_true", help="Only build index, don't download")
     parser.add_argument("--download-only", action="store_true", help="Only download pending manuals")

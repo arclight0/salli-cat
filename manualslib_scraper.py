@@ -676,7 +676,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, ca
 
 
 def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = True, category_urls: list[str] = None, categories: list[str] = None, captcha_solver: TwoCaptchaSolver = None):
-    """Scrape all TV manuals for a brand.
+    """Scrape all CRT manuals for a brand.
 
     Args:
         page: Playwright page object
@@ -773,7 +773,7 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape TV manuals from ManualsLib")
+    parser = argparse.ArgumentParser(description="Scrape CRT manuals from ManualsLib")
     parser.add_argument("--brands", nargs="*", help="Specific brands to scrape (overrides config and discovered brands)")
     parser.add_argument("--discover-brands", action="store_true", help="Discover all brands with TV category")
     parser.add_argument("--use-discovered", action="store_true", help="Scrape all discovered brands (instead of config)")

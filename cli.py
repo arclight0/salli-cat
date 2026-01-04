@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Salli Cat CLI - TV manual preservation tool."""
+"""Salli Cat CLI - CRT manual preservation tool."""
 
 import click
 
@@ -9,9 +9,9 @@ from pathlib import Path
 @click.group()
 @click.version_option(version="0.1.0", prog_name="salli")
 def cli():
-    """Salli Cat - TV manual preservation tool.
+    """Salli Cat - CRT manual preservation tool.
 
-    Scrapes TV manuals from multiple sources and uploads them to the Internet Archive.
+    Scrapes CRT manuals from multiple sources and uploads them to the Internet Archive.
     """
     pass
 
@@ -36,7 +36,7 @@ def scrape():
 @click.option("--clear-brands", is_flag=True, help="Clear all discovered brands")
 @click.option("--clear-all", is_flag=True, help="Clear both manuals and brands")
 def scrape_manualslib(brands, discover_brands, use_discovered, index_only, download_only, clear, clear_brands, clear_all):
-    """Scrape TV manuals from ManualsLib."""
+    """Scrape CRT manuals from ManualsLib."""
     import sys
 
     # Build argv for the scraper
@@ -72,7 +72,7 @@ def scrape_manualslib(brands, discover_brands, use_discovered, index_only, downl
 @click.option("--brands", multiple=True, help="Specific brand URLs to scrape")
 @click.option("--clear", is_flag=True, help="Clear all manualsbase records")
 def scrape_manualsbase(index_only, download_only, limit_brands, brands, clear):
-    """Scrape TV manuals from ManualsBase."""
+    """Scrape CRT manuals from ManualsBase."""
     import sys
 
     argv = []
@@ -99,7 +99,7 @@ def scrape_manualsbase(index_only, download_only, limit_brands, brands, clear):
 @click.option("--download-only", is_flag=True, help="Only download pending manuals")
 @click.option("--clear", is_flag=True, help="Clear all manualzz records")
 def scrape_manualzz(urls, index_only, download_only, clear):
-    """Scrape TV manuals from Manualzz."""
+    """Scrape CRT manuals from Manualzz."""
     import sys
 
     argv = []

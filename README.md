@@ -4,7 +4,7 @@
 
 *From "Salvator Librorum Cathodicorum" - Savior of Cathode Books*
 
-A Python-based tool for preserving TV manuals on the [Internet Archive](https://archive.org). Scrapes manuals from multiple sources, downloads PDFs locally, and uploads them to archive.org for long-term preservation and public access.
+A Python-based tool for preserving CRT manuals on the [Internet Archive](https://archive.org). Scrapes manuals from multiple sources, downloads PDFs locally, and uploads them to archive.org for long-term preservation and public access.
 
 ## Features
 
@@ -19,7 +19,7 @@ A Python-based tool for preserving TV manuals on the [Internet Archive](https://
 
 | Site | Status | Notes |
 |------|--------|-------|
-| **ManualsLib** (manualslib.com) | :white_check_mark: Full automation | Brand discovery and TV manual scraping. Recommended: use both a reCAPTCHA solver (e.g. 2captcha) and a residential proxy. |
+| **ManualsLib** (manualslib.com) | :white_check_mark: Full automation | Brand discovery and CRT manual scraping. Recommended: use both a reCAPTCHA solver (e.g. 2captcha) and a residential proxy. |
 | **ManualsBase** (manualsbase.com) | :white_check_mark: Full automation | Scrapes all brands with TV-related categories. Recommended: use a reCAPTCHA solver. Proxy not necessary. |
 | **Manualzz** (manualzz.com) | :warning: Partial support | CRT TV and monitor manual scraping. Works with manual captcha solving, but Cloudflare managed challenges prevent full automation. |
 | **Manualzilla** (manualzilla.com) | :x: Not yet implemented | TODO. Likely to have same Cloudflare challenges as Manualzz. |
@@ -91,7 +91,7 @@ Options:
 
 ### Brand Discovery
 
-Automatically discover all brands on ManualsLib that have TV manuals:
+Automatically discover all brands on ManualsLib that have CRT manuals:
 
 ```bash
 # Discover all brands with TV category (saves to database)
