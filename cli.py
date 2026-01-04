@@ -124,14 +124,16 @@ def scrape_manualzz(urls, index_only, download_only, clear):
 
 @cli.command()
 @click.option("--source", type=click.Choice(["manualslib", "manualsbase", "manualzz"]),
-              required=True, help="Source to upload from")
+              help="Source to upload from (default: all sources)")
 @click.option("--limit", type=int, help="Limit number of uploads")
 @click.option("--dry-run", is_flag=True, help="Preview uploads without uploading")
 def upload(source, limit, dry_run):
     """Upload downloaded manuals to Internet Archive."""
     import sys
 
-    argv = ["--source", source]
+    argv = []
+    if source:
+        argv.extend(["--source", source])
     if limit:
         argv.extend(["--limit", str(limit)])
     if dry_run:

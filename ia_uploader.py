@@ -212,7 +212,7 @@ def upload_manual_to_ia(manual: dict) -> str | None:
         return None
 
 
-def get_uploadable_manuals(source: str = "manualslib", limit: int = None) -> list[dict]:
+def get_uploadable_manuals(source: str = None, limit: int = None) -> list[dict]:
     """
     Get manuals that are downloaded but not yet uploaded to Internet Archive.
 
@@ -251,7 +251,7 @@ def get_uploadable_manuals(source: str = "manualslib", limit: int = None) -> lis
 
 
 def upload_all_pending(
-    source: str = "manualslib",
+    source: str = None,
     limit: int = None,
 ) -> tuple[int, int]:
     """
@@ -312,7 +312,7 @@ def main():
     )
 
     parser = argparse.ArgumentParser(description="Upload manuals to Internet Archive")
-    parser.add_argument("--source", default="manualslib", help="Source to upload from")
+    parser.add_argument("--source", default=None, help="Source to upload from (default: all sources)")
     parser.add_argument("--limit", type=int, help="Max number to upload")
     parser.add_argument("--dry-run", action="store_true", help="Show detailed preview of what would be uploaded")
     args = parser.parse_args()
