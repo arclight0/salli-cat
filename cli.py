@@ -27,7 +27,8 @@ def scrape():
 
 
 @scrape.command("manualslib")
-@click.option("--brands", multiple=True, help="Specific brands to scrape (overrides config)")
+@click.option("--brand", help="Specific brand to scrape (overrides config)")
+@click.option("--brands", multiple=True, help="Multiple brands to scrape (overrides config)")
 @click.option("--discover-brands", is_flag=True, help="Discover all brands with TV category")
 @click.option("--use-discovered", is_flag=True, help="Scrape all discovered brands")
 @click.option("--index-only", is_flag=True, help="Only build index, don't download")
@@ -35,14 +36,19 @@ def scrape():
 @click.option("--clear", is_flag=True, help="Clear all manual records before scraping")
 @click.option("--clear-brands", is_flag=True, help="Clear all discovered brands")
 @click.option("--clear-all", is_flag=True, help="Clear both manuals and brands")
-def scrape_manualslib(brands, discover_brands, use_discovered, index_only, download_only, clear, clear_brands, clear_all):
+def scrape_manualslib(brand, brands, discover_brands, use_discovered, index_only, download_only, clear, clear_brands, clear_all):
     """Scrape CRT manuals from ManualsLib."""
     import sys
 
+    # Combine --brand and --brands into a single list
+    all_brands = list(brands) if brands else []
+    if brand:
+        all_brands.insert(0, brand)
+
     # Build argv for the scraper
     argv = []
-    if brands:
-        argv.extend(["--brands"] + list(brands))
+    if all_brands:
+        argv.extend(["--brands"] + all_brands)
     if discover_brands:
         argv.append("--discover-brands")
     if use_discovered:
