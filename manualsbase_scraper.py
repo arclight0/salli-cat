@@ -66,6 +66,18 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def get_config(config: dict, key: str, default=None, namespace: str = "manualsbase"):
+    """Get config value with namespace override support.
+
+    Checks namespace-specific value first, falls back to global.
+    e.g., get_config(config, "use_proxy") checks manualsbase.use_proxy, then use_proxy
+    """
+    ns_config = config.get(namespace, {})
+    if key in ns_config:
+        return ns_config[key]
+    return config.get(key, default)
+
+
 # Global delay settings (updated from config in main())
 DELAY_MIN = 2.0
 DELAY_MAX = 5.0
@@ -128,7 +140,7 @@ def extract_manualsbase_id(url: str) -> str | None:
 def get_target_categories() -> list[str]:
     """Get target categories from config or use defaults."""
     config = load_config()
-    return config.get("manualsbase_categories", DEFAULT_TARGET_CATEGORIES)
+    return get_config(config, "categories", DEFAULT_TARGET_CATEGORIES)
 
 
 def matches_target_category(category_name: str) -> bool:
@@ -676,10 +688,10 @@ def main():
         database.clear_manuals_by_source("manualsbase")
         logger.info("ManualsBase records cleared.")
 
-    # Get browser settings from config
-    browser_type = config.get("browser", "chromium")
-    use_stealth = config.get("stealth", False)
-    use_proxy = config.get("use_proxy", False)
+    # Get browser settings from config (with namespace override support)
+    browser_type = get_config(config, "browser", "chromium")
+    use_stealth = get_config(config, "stealth", False)
+    use_proxy = get_config(config, "use_proxy", False)
 
     # Get extension path
     project_dir = Path(__file__).parent

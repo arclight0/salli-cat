@@ -1,66 +1,54 @@
-brands:
-  - rca
-  - sharp
-  - panasonic
-  - sony
-
-# Categories to scrape for each brand (used when not using discovered brands)
-# These are the URL slug suffixes, e.g. "tv" -> /brand/rca/tv.html
-# Common TV-related categories:
-#   - tv              (standalone TVs)
-#   - tv-dvd-combo    (TV/DVD combos)
-#   - tv-vcr-combo    (TV/VCR combos)
-#   - tv-vcr-dvd-combo (TV/VCR/DVD combos)
-categories:
-  - tv
-  - tv-dvd-combo
-  - tv-vcr-combo
-
+# Global settings
 download_dir: ./downloads
 
 # Browser to use: chromium, firefox, or webkit
-# Note: Extensions (like uBlock Origin) only work with chromium
 browser: chromium
 
-# Enable stealth mode to avoid fingerprint detection (default: false)
-# May interfere with some sites - disable if you have issues
+# Enable stealth mode to avoid fingerprint detection
 stealth: true
 
-# Use proxy for browser (default: false)
-# Requires PROXY_HOST, PROXY_PORT, PROXY_USER, PROXY_PASS in .env
+# Use proxy for browser (requires PROXY_* vars in .env)
 use_proxy: false
 
-# Delay between requests in seconds (increase to avoid IP bans)
+# Delay between requests in seconds
 delay_min: 0
 delay_max: 0
 
-# 2captcha API key: Set TWOCAPTCHA_API_KEY in .env file
-# See .env.example for details
+# ManualsLib settings
+manualslib:
+  brands:
+    - rca
+    - sharp
+    - panasonic
+    - sony
+  # Categories to scrape for each brand (URL slug suffixes)
+  # e.g. "tv" -> /brand/rca/tv.html
+  categories:
+    - tv
+    - tv-dvd-combo
+    - tv-vcr-combo
+  # Override global settings for this scraper:
+  use_proxy: true
+  # browser: firefox
+  # stealth: false
 
-# Manualzz catalog URLs to scrape
-manualzz_urls:
-  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs
-  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/monitors+CRT
+# ManualsBase settings
+manualsbase:
+  # Target categories (case-insensitive matching)
+  # Any category containing these words will be scraped
+  categories:
+    - tv
+    - television
+    - monitor
+    - crt
+    - remote
+  # Override global settings for this scraper:
+  use_proxy: false
 
-# uBlock Origin extension for ad blocking (optional)
-# Download from: https://github.com/AmpMn/AmpMn/releases
-# Look for uBlock0_X.XX.X.chromium.zip and extract to this path
-# The directory should contain manifest.json
-# If not set, falls back to route-based ad blocking
-# ublock_origin_path: ./extensions/ublock_origin
-
-# ManualsBase target categories (case-insensitive matching)
-# Any category containing these words will be scraped
-manualsbase_categories:
-  - tv
-  - television
-  - monitor
-  - crt
-  - remote
-
-# Cloudflare Turnstile sitekeys for automatic solving
-# To find sitekey: Open DevTools (F12) on challenge page, check Network tab
-# for requests to challenges.cloudflare.com, look for "k=" or "sitekey=" param
-# Or run in Console: document.querySelector('iframe').src
-turnstile_sitekeys:
-  # manualzz.com: "0x4AAAAAAA..."  # Uncomment and add your sitekey
+# Manualzz settings
+manualzz:
+  urls:
+    - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs
+    - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/monitors+CRT
+  # Override global settings for this scraper:
+  # use_proxy: false

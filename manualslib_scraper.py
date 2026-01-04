@@ -81,6 +81,18 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def get_config(config: dict, key: str, default=None, namespace: str = "manualslib"):
+    """Get config value with namespace override support.
+
+    Checks namespace-specific value first, falls back to global.
+    e.g., get_config(config, "use_proxy") checks manualslib.use_proxy, then use_proxy
+    """
+    ns_config = config.get(namespace, {})
+    if key in ns_config:
+        return ns_config[key]
+    return config.get(key, default)
+
+
 # Global delay settings (updated from config in main())
 DELAY_MIN = 2.0
 DELAY_MAX = 5.0
@@ -830,11 +842,11 @@ def main():
             logger.info("No manuals to upload")
         return
 
-    # Get browser and extension settings
+    # Get browser and extension settings (with namespace override support)
     project_dir = Path(__file__).parent
-    browser_type = config.get("browser", "chromium")
-    use_stealth = config.get("stealth", False)
-    use_proxy = config.get("use_proxy", False)
+    browser_type = get_config(config, "browser", "chromium")
+    use_stealth = get_config(config, "stealth", False)
+    use_proxy = get_config(config, "use_proxy", False)
     extension_path = get_extension_path(config, project_dir)
 
     # Log proxy configuration (proxy is only used for browser, not file downloads)
@@ -913,7 +925,7 @@ def main():
                 use_discovered_urls = True
                 logger.info(f"Using {len(brands)} discovered brands")
             else:
-                brands = config.get("brands", [])
+                brands = get_config(config, "brands", [])
                 use_discovered_urls = False
 
             if args.download_only:
@@ -973,7 +985,7 @@ def main():
                                 )
             else:
                 # Get configured categories (defaults to just "tv")
-                configured_categories = config.get("categories", ["tv"])
+                configured_categories = get_config(config, "categories", ["tv"])
 
                 if use_discovered_urls:
                     # Use discovered brands from database with their saved category URLs

@@ -37,6 +37,18 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def get_config(config: dict, key: str, default=None, namespace: str = "manualzz"):
+    """Get config value with namespace override support.
+
+    Checks namespace-specific value first, falls back to global.
+    e.g., get_config(config, "use_proxy") checks manualzz.use_proxy, then use_proxy
+    """
+    ns_config = config.get(namespace, {})
+    if key in ns_config:
+        return ns_config[key]
+    return config.get(key, default)
+
+
 # Global delay settings (updated from config in main())
 DELAY_MIN = 2.0
 DELAY_MAX = 5.0
@@ -758,10 +770,10 @@ def main():
         database.clear_manuals_by_source("manualzz")
         logger.info("Manualzz records cleared.")
 
-    catalog_urls = args.urls or config.get("manualzz_urls", [])
+    catalog_urls = args.urls or get_config(config, "urls", [])
 
     if not catalog_urls:
-        logger.error("No catalog URLs specified. Add manualzz_urls to config.yaml or use --urls")
+        logger.error("No catalog URLs specified. Add manualzz.urls to config.yaml or use --urls")
         return
 
     # Get extension path for ad blocking
@@ -773,10 +785,10 @@ def main():
         logger.info("No uBlock Origin extension found - will use route-based ad blocking")
         logger.info("To use uBlock Origin, set 'ublock_origin_path' in config.yaml or place extension in ./extensions/ublock_origin/")
 
-    # Get browser settings from config
-    browser_type = config.get("browser", "chromium")
-    use_stealth = config.get("stealth", False)
-    use_proxy = config.get("use_proxy", False)
+    # Get browser settings from config (with namespace override support)
+    browser_type = get_config(config, "browser", "chromium")
+    use_stealth = get_config(config, "stealth", False)
+    use_proxy = get_config(config, "use_proxy", False)
 
     if args.download_only:
         # Only download pending manuals

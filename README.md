@@ -206,33 +206,47 @@ uv run honcho start archive_checker
 Edit `config.yaml` to configure brands, categories, and catalog URLs:
 
 ```yaml
-# ManualsLib brands (slug from URL)
-brands:
-  - rca
-  - sharp
-  - panasonic
-  - samsung
-  - lg
-
-# Categories to scrape for each brand (used when not using discovered brands)
-# These are the URL slug suffixes, e.g. "tv" -> /brand/rca/tv.html
-categories:
-  - tv              # standalone TVs
-  - tv-dvd-combo    # TV/DVD combos
-  - tv-vcr-combo    # TV/VCR combos
-
+# Global settings
 download_dir: ./downloads
+browser: chromium       # chromium, firefox, or webkit
+stealth: true           # Apply stealth patches
+use_proxy: true         # Use proxy (requires PROXY_* in .env)
+delay_min: 0            # Min delay between requests (seconds)
+delay_max: 0            # Max delay between requests (seconds)
 
-# Manualzz catalog URLs to scrape
-manualzz_urls:
-  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs
-  - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/monitors+CRT
+# ManualsLib settings
+manualslib:
+  brands:
+    - rca
+    - sharp
+    - panasonic
+  categories:
+    - tv              # standalone TVs
+    - tv-dvd-combo    # TV/DVD combos
+    - tv-vcr-combo    # TV/VCR combos
+  # Override global settings for this scraper:
+  # use_proxy: false
+  # browser: firefox
+
+# ManualsBase settings
+manualsbase:
+  categories:         # Keywords to match category names
+    - tv
+    - television
+    - monitor
+    - crt
+    - remote
+
+# Manualzz settings
+manualzz:
+  urls:
+    - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/CRT+TVs
+    - https://manualzz.com/catalog/computers+%26+electronics/TVs+%26+monitors/monitors+CRT
 ```
 
-- **brands**: ManualsLib brand slugs (e.g., `https://www.manualslib.com/brand/rca/tv.html`)
-- **categories**: Category slugs to scrape for each brand. When using `--use-discovered`, the discovered category URLs are used instead.
-- **manualsbase_categories**: Keywords to match against ManualsBase category names (e.g., "tv", "monitor", "crt")
-- **manualzz_urls**: Direct catalog URLs from manualzz.com
+Each scraper has its own namespace (`manualslib`, `manualsbase`, `manualzz`) where you can:
+- Set scraper-specific options (brands, categories, urls)
+- Override global settings like `use_proxy`, `browser`, `stealth` for that scraper only
 
 ## Captcha Handling
 
