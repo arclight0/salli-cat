@@ -33,7 +33,7 @@ manualslib-scraper/
 ├── .env                  # Environment variables (API keys) - not in git
 ├── .env.example          # Example environment file
 ├── Procfile              # Process definitions for honcho
-├── scraper.py            # ManualsLib Playwright scraper
+├── manualslib_scraper.py # ManualsLib Playwright scraper
 ├── manualsbase_scraper.py # ManualsBase Playwright scraper
 ├── manualzz_scraper.py   # Manualzz Playwright scraper
 ├── archive_checker.py    # Background archive.org checker
@@ -79,38 +79,38 @@ Automatically discover all brands on manualslib that have TV manuals:
 
 ```bash
 # Discover all brands with TV category (saves to database)
-uv run python scraper.py --discover-brands
+uv run python manualslib_scraper.py --discover-brands
 
 # Then scrape all discovered brands
-uv run python scraper.py --use-discovered --scrape-only
+uv run python manualslib_scraper.py --use-discovered --scrape-only
 ```
 
 ### Running the ManualsLib Scraper
 
 ```bash
 # Scrape all brands in config.yaml
-uv run python scraper.py
+uv run python manualslib_scraper.py
 
 # Scrape specific brands only
-uv run python scraper.py --brands rca sharp panasonic
+uv run python manualslib_scraper.py --brands rca sharp panasonic
 
 # Scrape all discovered brands (from --discover-brands)
-uv run python scraper.py --use-discovered
+uv run python manualslib_scraper.py --use-discovered
 
 # Scrape listings only (populate database, no downloads)
-uv run python scraper.py --scrape-only
+uv run python manualslib_scraper.py --scrape-only
 
 # Download pending manuals only (skip scraping)
-uv run python scraper.py --download-only
+uv run python manualslib_scraper.py --download-only
 
 # Clear manualslib records and start fresh
-uv run python scraper.py --clear --scrape-only
+uv run python manualslib_scraper.py --clear --scrape-only
 
 # Clear discovered brands
-uv run python scraper.py --clear-brands
+uv run python manualslib_scraper.py --clear-brands
 
 # Clear everything (manuals and brands)
-uv run python scraper.py --clear-all
+uv run python manualslib_scraper.py --clear-all
 ```
 
 ### Running the ManualsBase Scraper
