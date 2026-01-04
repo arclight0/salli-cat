@@ -32,6 +32,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.manualsbase.com"
+ARCHIVE_ORG_BASE = "https://archive.org/details/manualsbase-id-"
+
+
+def check_archive_org(source_id: str) -> tuple[bool, str]:
+    """Check if a manual exists on archive.org. Returns (exists, archive_url)."""
+    archive_url = f"{ARCHIVE_ORG_BASE}{source_id}"
+    try:
+        req = urllib.request.Request(archive_url, method='HEAD')
+        req.add_header('User-Agent', 'Mozilla/5.0 (compatible; Salli-Cat/1.0)')
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return True, archive_url
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False, archive_url
+        logger.warning(f"HTTP error checking archive.org: {e.code}")
+        return False, archive_url
+    except Exception as e:
+        logger.warning(f"Error checking archive.org: {e}")
+        return False, archive_url
 
 # Default categories to look for (can be overridden in config.yaml)
 DEFAULT_TARGET_CATEGORIES = ["tv", "television", "monitor", "crt", "remote"]
@@ -586,12 +605,23 @@ def scrape_manualsbase(
 
     for manual_record in pending:
         try:
+            source_id = manual_record.get("source_id")
+
+            # Check if already archived on archive.org
+            if source_id:
+                logger.info(f"Checking archive.org for {manual_record['model']} (ID: {source_id})...")
+                is_archived, archive_url = check_archive_org(source_id)
+                if is_archived:
+                    logger.info(f"Already archived: {archive_url}")
+                    database.update_archived(manual_record["id"], archive_url)
+                    continue
+
             result = download_manual(
                 page,
                 {
                     "title": manual_record["model"],
                     "url": manual_record["manual_url"],
-                    "id": manual_record.get("source_id"),
+                    "id": source_id,
                     "brand": manual_record["brand"],
                 },
                 download_dir
@@ -683,12 +713,23 @@ def main():
 
                 for manual_record in pending:
                     try:
+                        source_id = manual_record.get("source_id")
+
+                        # Check if already archived on archive.org
+                        if source_id:
+                            logger.info(f"Checking archive.org for {manual_record['model']} (ID: {source_id})...")
+                            is_archived, archive_url = check_archive_org(source_id)
+                            if is_archived:
+                                logger.info(f"Already archived: {archive_url}")
+                                database.update_archived(manual_record["id"], archive_url)
+                                continue
+
                         result = download_manual(
                             page,
                             {
                                 "title": manual_record["model"],
                                 "url": manual_record["manual_url"],
-                                "id": manual_record.get("source_id"),
+                                "id": source_id,
                                 "brand": manual_record["brand"],
                             },
                             download_dir
