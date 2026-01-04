@@ -82,7 +82,7 @@ Automatically discover all brands on manualslib that have TV manuals:
 uv run python manualslib_scraper.py --discover-brands
 
 # Then scrape all discovered brands
-uv run python manualslib_scraper.py --use-discovered --scrape-only
+uv run python manualslib_scraper.py --use-discovered --index-only
 ```
 
 ### Running the ManualsLib Scraper
@@ -97,14 +97,14 @@ uv run python manualslib_scraper.py --brands rca sharp panasonic
 # Scrape all discovered brands (from --discover-brands)
 uv run python manualslib_scraper.py --use-discovered
 
-# Scrape listings only (populate database, no downloads)
-uv run python manualslib_scraper.py --scrape-only
+# Build index only (populate database, no downloads)
+uv run python manualslib_scraper.py --index-only
 
 # Download pending manuals only (skip scraping)
 uv run python manualslib_scraper.py --download-only
 
 # Clear manualslib records and start fresh
-uv run python manualslib_scraper.py --clear --scrape-only
+uv run python manualslib_scraper.py --clear --index-only
 
 # Clear discovered brands
 uv run python manualslib_scraper.py --clear-brands
@@ -119,8 +119,8 @@ uv run python manualslib_scraper.py --clear-all
 # Scrape all brands with TV-related categories
 uv run python manualsbase_scraper.py
 
-# Scrape listings only (populate database, no downloads)
-uv run python manualsbase_scraper.py --scrape-only
+# Build index only (populate database, no downloads)
+uv run python manualsbase_scraper.py --index-only
 
 # Download pending manuals only (skip scraping)
 uv run python manualsbase_scraper.py --download-only
@@ -138,8 +138,8 @@ uv run python manualzz_scraper.py
 # Scrape specific catalog URLs
 uv run python manualzz_scraper.py --urls "https://manualzz.com/catalog/..."
 
-# Scrape listings only (populate database, no downloads)
-uv run python manualzz_scraper.py --scrape-only
+# Build index only (populate database, no downloads)
+uv run python manualzz_scraper.py --index-only
 
 # Download pending manuals only (skip scraping)
 uv run python manualzz_scraper.py --download-only

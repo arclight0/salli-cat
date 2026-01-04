@@ -639,7 +639,7 @@ def scrape_manualsbase(
 
 def main():
     parser = argparse.ArgumentParser(description="Scrape TV manuals from ManualsBase")
-    parser.add_argument("--scrape-only", action="store_true", help="Only scrape listings, don't download")
+    parser.add_argument("--index-only", action="store_true", help="Only build index, don't download")
     parser.add_argument("--download-only", action="store_true", help="Only download pending manuals")
     parser.add_argument("--limit-brands", type=int, help="Limit number of brands to process")
     parser.add_argument("--brands", nargs="*", help="Specific brand URLs to scrape")
@@ -746,7 +746,7 @@ def main():
                 scrape_manualsbase(
                     page,
                     download_dir,
-                    download=not args.scrape_only,
+                    download=not args.index_only,
                     limit_brands=args.limit_brands,
                     specific_brands=args.brands,
                 )

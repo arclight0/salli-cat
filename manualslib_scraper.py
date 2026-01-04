@@ -765,7 +765,7 @@ def main():
     parser.add_argument("--brands", nargs="*", help="Specific brands to scrape (overrides config and discovered brands)")
     parser.add_argument("--discover-brands", action="store_true", help="Discover all brands with TV category")
     parser.add_argument("--use-discovered", action="store_true", help="Scrape all discovered brands (instead of config)")
-    parser.add_argument("--scrape-only", action="store_true", help="Only scrape listings, don't download")
+    parser.add_argument("--index-only", action="store_true", help="Only build index, don't download")
     parser.add_argument("--download-only", action="store_true", help="Only download pending manuals")
     parser.add_argument("--upload-to-ia", action="store_true", help="Upload downloaded manuals to Internet Archive")
     parser.add_argument("--ia-limit", type=int, help="Limit number of uploads to Internet Archive")
@@ -983,13 +983,13 @@ def main():
                         cat_urls_str = brand_record.get("tv_category_urls", "")
                         category_urls = [url.strip() for url in cat_urls_str.split(",") if url.strip()]
 
-                        scrape_brand(page, brand, download_dir, download=not args.scrape_only, category_urls=category_urls, captcha_solver=captcha_solver)
+                        scrape_brand(page, brand, download_dir, download=not args.index_only, category_urls=category_urls, captcha_solver=captcha_solver)
                         database.mark_brand_scraped(brand_record["id"])
                         random_delay(3, 6)
                 else:
                     # Use brands from config or CLI with configured categories
                     for brand in brands:
-                        scrape_brand(page, brand, download_dir, download=not args.scrape_only, categories=configured_categories, captcha_solver=captcha_solver)
+                        scrape_brand(page, brand, download_dir, download=not args.index_only, categories=configured_categories, captcha_solver=captcha_solver)
                         random_delay(3, 6)
         finally:
             context.close()

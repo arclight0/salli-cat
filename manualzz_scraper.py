@@ -736,7 +736,7 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
 def main():
     parser = argparse.ArgumentParser(description="Scrape TV manuals from Manualzz")
     parser.add_argument("--urls", nargs="*", help="Specific catalog URLs to scrape (overrides config)")
-    parser.add_argument("--scrape-only", action="store_true", help="Only scrape listings, don't download")
+    parser.add_argument("--index-only", action="store_true", help="Only build index, don't download")
     parser.add_argument("--download-only", action="store_true", help="Only download pending manuals")
     parser.add_argument("--clear", action="store_true", help="Clear all manualzz records from database before scraping")
     args = parser.parse_args()
@@ -829,7 +829,7 @@ def main():
             finally:
                 context.close()
     else:
-        scrape_manualzz(catalog_urls, download_dir, download=not args.scrape_only, extension_path=extension_path, browser=browser_type, use_stealth=use_stealth, use_proxy=use_proxy)
+        scrape_manualzz(catalog_urls, download_dir, download=not args.index_only, extension_path=extension_path, browser=browser_type, use_stealth=use_stealth, use_proxy=use_proxy)
 
 
 if __name__ == "__main__":
