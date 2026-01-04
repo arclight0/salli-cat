@@ -209,6 +209,7 @@ Edit `config.yaml` to configure brands, categories, and catalog URLs:
 # Global settings
 download_dir: ./downloads
 browser: chromium       # chromium, firefox, or webkit
+headless: false         # Run without visible window (manual captcha needs false)
 stealth: true           # Apply stealth patches
 use_proxy: true         # Use proxy (requires PROXY_* in .env)
 delay_min: 0            # Min delay between requests (seconds)

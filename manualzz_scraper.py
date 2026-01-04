@@ -668,7 +668,7 @@ def download_manual(page: Page, manual: dict, download_dir: Path) -> tuple[str, 
     return None
 
 
-def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True, extension_path: Path = None, browser: str = "chromium", use_stealth: bool = False, use_proxy: bool = False):
+def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool = True, extension_path: Path = None, browser: str = "chromium", headless: bool = False, use_stealth: bool = False, use_proxy: bool = False):
     """Main scraping function for manualzz."""
     database.init_db()
 
@@ -677,7 +677,7 @@ def scrape_manualzz(catalog_urls: list[str], download_dir: Path, download: bool 
         context, extension_loaded = launch_browser_with_extension(
             p,
             extension_path=extension_path,
-            headless=False,
+            headless=headless,
             browser=browser,
             use_proxy=use_proxy,
         )
@@ -787,6 +787,7 @@ def main():
 
     # Get browser settings from config (with namespace override support)
     browser_type = get_config(config, "browser", "chromium")
+    headless = get_config(config, "headless", False)
     use_stealth = get_config(config, "stealth", False)
     use_proxy = get_config(config, "use_proxy", False)
 
@@ -797,7 +798,7 @@ def main():
             context, extension_loaded = launch_browser_with_extension(
                 p,
                 extension_path=extension_path,
-                headless=False,
+                headless=headless,
                 browser=browser_type,
                 use_proxy=use_proxy,
             )
@@ -841,7 +842,7 @@ def main():
             finally:
                 context.close()
     else:
-        scrape_manualzz(catalog_urls, download_dir, download=not args.index_only, extension_path=extension_path, browser=browser_type, use_stealth=use_stealth, use_proxy=use_proxy)
+        scrape_manualzz(catalog_urls, download_dir, download=not args.index_only, extension_path=extension_path, browser=browser_type, headless=headless, use_stealth=use_stealth, use_proxy=use_proxy)
 
 
 if __name__ == "__main__":

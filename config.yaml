@@ -4,6 +4,10 @@ download_dir: ./downloads
 # Browser to use: chromium, firefox, or webkit
 browser: chromium
 
+# Run browser in headless mode (no visible window)
+# Note: Manual captcha solving requires headless: false
+headless: false
+
 # Enable stealth mode to avoid fingerprint detection
 stealth: true
 

@@ -845,6 +845,7 @@ def main():
     # Get browser and extension settings (with namespace override support)
     project_dir = Path(__file__).parent
     browser_type = get_config(config, "browser", "chromium")
+    headless = get_config(config, "headless", False)
     use_stealth = get_config(config, "stealth", False)
     use_proxy = get_config(config, "use_proxy", False)
     extension_path = get_extension_path(config, project_dir)
@@ -867,7 +868,7 @@ def main():
         context, extension_loaded = launch_browser_with_extension(
             p,
             extension_path=extension_path,
-            headless=False,  # Extensions may not work in headless mode
+            headless=headless,
             browser=browser_type,
             use_proxy=use_proxy,
         )

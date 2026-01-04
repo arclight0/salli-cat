@@ -690,6 +690,7 @@ def main():
 
     # Get browser settings from config (with namespace override support)
     browser_type = get_config(config, "browser", "chromium")
+    headless = get_config(config, "headless", False)
     use_stealth = get_config(config, "stealth", False)
     use_proxy = get_config(config, "use_proxy", False)
 
@@ -701,7 +702,7 @@ def main():
         context, extension_loaded = launch_browser_with_extension(
             p,
             extension_path=extension_path,
-            headless=False,
+            headless=headless,
             browser=browser_type,
             use_proxy=use_proxy,
         )
