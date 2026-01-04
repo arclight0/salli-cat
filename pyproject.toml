@@ -12,6 +12,7 @@ dependencies = [
     "honcho",
     "python-dotenv",
     "internetarchive",
+    "pikepdf>=10.1.0",
 ]
 
 [project.scripts]

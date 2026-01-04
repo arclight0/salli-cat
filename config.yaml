@@ -1,6 +1,9 @@
 # Global settings
 download_dir: ./downloads
 
+# Strip watermarks from downloaded PDFs (currently only ManualsLib)
+strip_watermarks: true
+
 # Browser to use: chromium, firefox, or webkit
 browser: chromium
 

@@ -16,6 +16,8 @@ import yaml
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright, Page
 
+from pdf_utils import strip_manualslib_watermark
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -93,9 +95,10 @@ def get_config(config: dict, key: str, default=None, namespace: str = "manualsli
     return config.get(key, default)
 
 
-# Global delay settings (updated from config in main())
+# Global settings (updated from config in main())
 DELAY_MIN = 2.0
 DELAY_MAX = 5.0
+STRIP_WATERMARKS = True
 
 
 def random_delay(min_sec: float = None, max_sec: float = None):
@@ -654,6 +657,10 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, ca
 
     temp_path, original_filename = result
 
+    # Strip ManualsLib watermark before computing checksums
+    if STRIP_WATERMARKS:
+        strip_manualslib_watermark(temp_path)
+
     # Compute checksums
     sha1, md5 = compute_checksums(temp_path)
     file_size = temp_path.stat().st_size
@@ -790,11 +797,13 @@ def main():
     download_dir = Path(config.get("download_dir", "./downloads")).resolve()
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    # Set delay values from config
-    global DELAY_MIN, DELAY_MAX
+    # Set global values from config
+    global DELAY_MIN, DELAY_MAX, STRIP_WATERMARKS
     DELAY_MIN = config.get("delay_min", 2.0)
     DELAY_MAX = config.get("delay_max", 5.0)
+    STRIP_WATERMARKS = config.get("strip_watermarks", True)
     logger.info(f"Request delays: {DELAY_MIN}-{DELAY_MAX} seconds")
+    logger.info(f"Strip watermarks: {STRIP_WATERMARKS}")
 
     # Initialize 2captcha solver if API key is configured
     # Check environment variable first, then fall back to config.yaml
