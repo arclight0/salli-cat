@@ -144,10 +144,10 @@ def build_upload_metadata(manual: dict) -> dict:
         external_ids.append(f"urn:md5:{manual['file_md5']}")
     if manual.get("file_sha1"):
         external_ids.append(f"urn:sha1:{manual['file_sha1']}")
-    # Include original (pre-watermark-strip) checksums if available
-    if manual.get("original_file_md5"):
+    # Include original (pre-watermark-strip) checksums if they differ from final
+    if manual.get("original_file_md5") and manual.get("original_file_md5") != manual.get("file_md5"):
         external_ids.append(f"urn:original-md5:{manual['original_file_md5']}")
-    if manual.get("original_file_sha1"):
+    if manual.get("original_file_sha1") and manual.get("original_file_sha1") != manual.get("file_sha1"):
         external_ids.append(f"urn:original-sha1:{manual['original_file_sha1']}")
     if external_ids:
         metadata["external-identifier"] = external_ids
