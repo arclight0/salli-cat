@@ -303,7 +303,7 @@ def print_upload_preview(manual: dict):
     print()
 
 
-if __name__ == "__main__":
+def main():
     import argparse
 
     logging.basicConfig(
@@ -330,3 +330,7 @@ if __name__ == "__main__":
             limit=args.limit,
         )
         print(f"Done. Success: {success}, Failed: {failed}")
+
+
+if __name__ == "__main__":
+    main()
