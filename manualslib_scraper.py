@@ -42,6 +42,11 @@ class DownloadCircuitBreakerError(Exception):
     pass
 
 
+class DownloadLimitReached(Exception):
+    """Raised when the download limit is reached."""
+    pass
+
+
 ARCHIVE_ORG_BASE = "https://archive.org/details/manualslib-id-"
 CAPTCHA_TIMEOUT = 300  # 5 minutes to solve captcha
 
@@ -99,6 +104,23 @@ def get_config(config: dict, key: str, default=None, namespace: str = "manualsli
 DELAY_MIN = 2.0
 DELAY_MAX = 5.0
 STRIP_WATERMARKS = True
+DOWNLOAD_LIMIT = None
+DOWNLOAD_COUNT = 0
+
+
+def check_download_limit():
+    """Check if download limit reached. Raises DownloadLimitReached if so."""
+    global DOWNLOAD_COUNT
+    if DOWNLOAD_LIMIT and DOWNLOAD_COUNT >= DOWNLOAD_LIMIT:
+        raise DownloadLimitReached(f"Download limit reached ({DOWNLOAD_LIMIT})")
+
+
+def increment_download_count():
+    """Increment download count and log progress if limit is set."""
+    global DOWNLOAD_COUNT
+    DOWNLOAD_COUNT += 1
+    if DOWNLOAD_LIMIT:
+        logger.info(f"Downloaded {DOWNLOAD_COUNT}/{DOWNLOAD_LIMIT}")
 
 
 def random_delay(min_sec: float = None, max_sec: float = None):
@@ -729,6 +751,9 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
 
     for manual_record in pending:
         try:
+            # Check download limit before each download
+            check_download_limit()
+
             # Extract manualslib_id if not already in DB
             manualslib_id = manual_record.get("manualslib_id")
             if not manualslib_id:
@@ -757,6 +782,7 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
                 file_path, sha1, md5, file_size, original_filename = result
                 database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
                 consecutive_failures = 0  # Reset on success
+                increment_download_count()
             else:
                 consecutive_failures += 1
                 logger.warning(f"Download failed ({consecutive_failures}/{MAX_CONSECUTIVE_FAILURES} consecutive failures)")
@@ -766,8 +792,8 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
                         "This may indicate an IP ban or site issue."
                     )
             random_delay()
-        except DownloadCircuitBreakerError:
-            raise  # Re-raise circuit breaker errors
+        except (DownloadCircuitBreakerError, DownloadLimitReached):
+            raise  # Re-raise to stop
         except Exception as e:
             logger.error(f"Error downloading {manual_record['model']}: {e}")
             consecutive_failures += 1
@@ -786,6 +812,7 @@ def main():
     parser.add_argument("--use-discovered", action="store_true", help="Scrape all discovered brands (instead of config)")
     parser.add_argument("--index-only", action="store_true", help="Only build index, don't download")
     parser.add_argument("--download-only", action="store_true", help="Only download pending manuals")
+    parser.add_argument("--limit", type=int, help="Limit number of downloads")
     parser.add_argument("--upload-to-ia", action="store_true", help="Upload downloaded manuals to Internet Archive")
     parser.add_argument("--ia-limit", type=int, help="Limit number of uploads to Internet Archive")
     parser.add_argument("--clear", action="store_true", help="Clear all manual records from database before scraping")
@@ -797,13 +824,16 @@ def main():
     download_dir = Path(config.get("download_dir", "./downloads")).resolve()
     download_dir.mkdir(parents=True, exist_ok=True)
 
-    # Set global values from config
-    global DELAY_MIN, DELAY_MAX, STRIP_WATERMARKS
+    # Set global values from config/args
+    global DELAY_MIN, DELAY_MAX, STRIP_WATERMARKS, DOWNLOAD_LIMIT
     DELAY_MIN = config.get("delay_min", 2.0)
     DELAY_MAX = config.get("delay_max", 5.0)
     STRIP_WATERMARKS = config.get("strip_watermarks", True)
+    DOWNLOAD_LIMIT = args.limit
     logger.info(f"Request delays: {DELAY_MIN}-{DELAY_MAX} seconds")
     logger.info(f"Strip watermarks: {STRIP_WATERMARKS}")
+    if DOWNLOAD_LIMIT:
+        logger.info(f"Download limit: {DOWNLOAD_LIMIT}")
 
     # Initialize 2captcha solver if API key is configured
     # Check environment variable first, then fall back to config.yaml
@@ -946,6 +976,9 @@ def main():
                     logger.info(f"Downloading {len(pending)} pending manuals for {brand}")
                     for manual_record in pending:
                         try:
+                            # Check download limit before each download
+                            check_download_limit()
+
                             # Extract manualslib_id if not already in DB
                             manualslib_id = manual_record.get("manualslib_id")
                             if not manualslib_id:
@@ -974,6 +1007,7 @@ def main():
                                 file_path, sha1, md5, file_size, original_filename = result
                                 database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename)
                                 consecutive_failures = 0  # Reset on success
+                                increment_download_count()
                             else:
                                 consecutive_failures += 1
                                 logger.warning(f"Download failed ({consecutive_failures}/{MAX_CONSECUTIVE_FAILURES} consecutive failures)")
@@ -983,8 +1017,8 @@ def main():
                                         "This may indicate an IP ban or site issue."
                                     )
                             random_delay()
-                        except DownloadCircuitBreakerError:
-                            raise  # Re-raise to stop completely
+                        except (DownloadCircuitBreakerError, DownloadLimitReached):
+                            raise  # Re-raise to stop
                         except Exception as e:
                             logger.error(f"Error downloading {manual_record['model']}: {e}")
                             consecutive_failures += 1
@@ -1013,6 +1047,8 @@ def main():
                     for brand in brands:
                         scrape_brand(page, brand, download_dir, download=not args.index_only, categories=configured_categories, captcha_solver=captcha_solver)
                         random_delay(3, 6)
+        except DownloadLimitReached:
+            logger.info(f"Download limit reached ({DOWNLOAD_LIMIT}). Stopping.")
         finally:
             context.close()
 

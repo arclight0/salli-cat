@@ -33,10 +33,11 @@ def scrape():
 @click.option("--use-discovered", is_flag=True, help="Scrape all discovered brands")
 @click.option("--index-only", is_flag=True, help="Only build index, don't download")
 @click.option("--download-only", is_flag=True, help="Only download pending manuals")
+@click.option("--limit", type=int, help="Limit number of downloads")
 @click.option("--clear", is_flag=True, help="Clear all manual records before scraping")
 @click.option("--clear-brands", is_flag=True, help="Clear all discovered brands")
 @click.option("--clear-all", is_flag=True, help="Clear both manuals and brands")
-def scrape_manualslib(brand, brands, discover_brands, use_discovered, index_only, download_only, clear, clear_brands, clear_all):
+def scrape_manualslib(brand, brands, discover_brands, use_discovered, index_only, download_only, limit, clear, clear_brands, clear_all):
     """Scrape CRT manuals from ManualsLib."""
     import sys
 
@@ -57,6 +58,8 @@ def scrape_manualslib(brand, brands, discover_brands, use_discovered, index_only
         argv.append("--index-only")
     if download_only:
         argv.append("--download-only")
+    if limit:
+        argv.extend(["--limit", str(limit)])
     if clear:
         argv.append("--clear")
     if clear_brands:
