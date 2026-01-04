@@ -6,6 +6,8 @@
 
 A Python-based tool for preserving CRT manuals on the [Internet Archive](https://archive.org). Scrapes manuals from multiple sources, downloads PDFs locally, and uploads them to archive.org for long-term preservation and public access.
 
+[![asciicast](https://asciinema.org/a/XKBnNY8aKwODqJhFiXRbTAzyo.svg)](https://asciinema.org/a/XKBnNY8aKwODqJhFiXRbTAzyo?speed=1.7&idleTimeLimit=1)
+
 ## Features
 
 - **Multi-source scraping**: Download manuals from ManualsLib, ManualsBase, and Manualzz
