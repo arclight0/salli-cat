@@ -3,11 +3,28 @@
 
 import logging
 import re
+import subprocess
 from pathlib import Path
 
 import internetarchive as ia
 
 import database
+
+
+def get_git_commit() -> str | None:
+    """Get the current git commit hash."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +118,16 @@ def build_upload_metadata(manual: dict) -> dict:
     remote_filename = sanitize_xml_string(remote_filename)
 
     # Build metadata
+    git_commit = get_git_commit()
+    scanner = "Salli Cat (https://github.com/arclight0/salli-cat)"
+    if git_commit:
+        scanner += f" @ {git_commit}"
+
     metadata = {
         "mediatype": "texts",
         "title": title,
         "subject": subjects,
+        "scanner": scanner,
     }
 
     # Add description
