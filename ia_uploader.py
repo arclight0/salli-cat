@@ -69,7 +69,13 @@ def build_upload_metadata(manual: dict) -> dict:
 
     Returns dict with: identifier, title, metadata, local_file, remote_filename
     """
-    file_path = manual.get("file_path")
+    # Get primary variant for file path, fallback to legacy column
+    primary_variant = database.get_primary_variant(manual["id"])
+    if primary_variant:
+        file_path = primary_variant["file_path"]
+    else:
+        file_path = manual.get("file_path")
+
     source = manual.get("source", "manualslib")
 
     # Create identifier based on source
@@ -139,16 +145,32 @@ def build_upload_metadata(manual: dict) -> dict:
         metadata["source"] = sanitize_xml_string(manual["manual_url"])
 
     # Add checksums as external identifiers (searchable on IA)
+    # Include checksums from all file variants
     external_ids = []
-    if manual.get("file_md5"):
-        external_ids.append(f"urn:md5:{manual['file_md5']}")
-    if manual.get("file_sha1"):
-        external_ids.append(f"urn:sha1:{manual['file_sha1']}")
-    # Include original (pre-watermark-strip) checksums if they differ from final
-    if manual.get("original_file_md5") and manual.get("original_file_md5") != manual.get("file_md5"):
-        external_ids.append(f"urn:original-md5:{manual['original_file_md5']}")
-    if manual.get("original_file_sha1") and manual.get("original_file_sha1") != manual.get("file_sha1"):
-        external_ids.append(f"urn:original-sha1:{manual['original_file_sha1']}")
+    variants = database.get_file_variants(manual["id"])
+    if variants:
+        for v in variants:
+            if v["is_primary"]:
+                # Primary variant gets plain identifiers
+                external_ids.append(f"urn:md5:{v['file_md5']}")
+                external_ids.append(f"urn:sha1:{v['file_sha1']}")
+            else:
+                # Non-primary variants get labeled identifiers only
+                external_ids.append(f"urn:{v['variant_type']}-md5:{v['file_md5']}")
+                external_ids.append(f"urn:{v['variant_type']}-sha1:{v['file_sha1']}")
+    else:
+        # Fallback to legacy columns
+        if manual.get("file_md5"):
+            external_ids.append(f"urn:md5:{manual['file_md5']}")
+        if manual.get("file_sha1"):
+            external_ids.append(f"urn:sha1:{manual['file_sha1']}")
+        # Include original (pre-watermark-strip) checksums if they differ from final
+        if manual.get("original_file_md5") and manual.get("original_file_md5") != manual.get("file_md5"):
+            external_ids.append(f"urn:original-md5:{manual['original_file_md5']}")
+        if manual.get("original_file_sha1") and manual.get("original_file_sha1") != manual.get("file_sha1"):
+            external_ids.append(f"urn:original-sha1:{manual['original_file_sha1']}")
+    # Deduplicate while preserving order
+    external_ids = list(dict.fromkeys(external_ids))
     if external_ids:
         metadata["external-identifier"] = external_ids
 

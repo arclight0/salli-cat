@@ -583,7 +583,7 @@ def download_file_to_temp(url: str, use_proxy: bool = False) -> tuple[Path, str]
         return None
 
 
-def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, captcha_solver: TwoCaptchaSolver = None) -> tuple[str, str, str, int, str] | None:
+def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, captcha_solver: TwoCaptchaSolver = None) -> tuple[str, str, str, int, str, str | None, str | None, str | None, int | None] | None:
     """
     Download a single manual using content-addressable storage.
 
@@ -679,33 +679,66 @@ def download_manual(page: Page, manual: dict, download_dir: Path, brand: str, ca
 
     temp_path, original_filename = result
 
-    # Compute original checksums before any modifications
-    original_sha1, original_md5 = None, None
+    # Compute original checksums
+    original_sha1, original_md5 = compute_checksums(temp_path)
+    original_file_size = temp_path.stat().st_size
+    original_file_path = None
+
     if STRIP_WATERMARKS:
-        original_sha1, original_md5 = compute_checksums(temp_path)
-        strip_manualslib_watermark(temp_path)
+        # Store original file BEFORE stripping
+        original_storage_path = get_sha1_storage_path(download_dir, original_sha1)
+        original_storage_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Compute checksums of final file (after stripping if enabled)
-    sha1, md5 = compute_checksums(temp_path)
-    file_size = temp_path.stat().st_size
+        if not original_storage_path.exists():
+            # Copy original to storage (keep temp for stripping)
+            shutil.copy2(str(temp_path), str(original_storage_path))
+            logger.info(f"Stored original: {original_storage_path} (SHA1: {original_sha1[:8]}...)")
+        else:
+            logger.info(f"Original already exists at {original_storage_path}")
 
-    # Move to SHA1-based storage path
-    final_path = get_sha1_storage_path(download_dir, sha1)
-    final_path.parent.mkdir(parents=True, exist_ok=True)
+        original_file_path = str(original_storage_path)
 
-    # If file already exists (duplicate content), just use existing path
-    if final_path.exists():
-        logger.info(f"File already exists at {final_path} (duplicate content)")
-        temp_path.unlink()  # Remove temp file
+        # Strip watermark on temp file
+        modified = strip_manualslib_watermark(temp_path)
+
+        if modified:
+            # Compute final checksums after stripping
+            sha1, md5 = compute_checksums(temp_path)
+            file_size = temp_path.stat().st_size
+
+            # Move stripped file to its own storage path
+            final_path = get_sha1_storage_path(download_dir, sha1)
+            final_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if final_path.exists():
+                logger.info(f"Stripped file already exists at {final_path}")
+                temp_path.unlink()
+            else:
+                shutil.move(str(temp_path), str(final_path))
+                logger.info(f"Stored stripped: {final_path} (SHA1: {sha1[:8]}...)")
+
+            logger.info(f"Original filename: {original_filename}")
+            return str(final_path), sha1, md5, file_size, original_filename, original_sha1, original_md5, original_file_path, original_file_size
+        else:
+            # Stripping didn't change file - remove temp and use original path
+            temp_path.unlink()
+            logger.info(f"Watermark stripping made no changes, using original")
+            logger.info(f"Original filename: {original_filename}")
+            return original_file_path, original_sha1, original_md5, original_file_size, original_filename, None, None, None, None
     else:
-        shutil.move(str(temp_path), str(final_path))
+        # No stripping - just store as original
+        final_path = get_sha1_storage_path(download_dir, original_sha1)
+        final_path.parent.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Downloaded: {final_path} ({file_size} bytes, SHA1: {sha1[:8]}...)")
-    if original_sha1:
-        logger.info(f"Original SHA1 (pre-strip): {original_sha1[:8]}...")
-    logger.info(f"Original filename: {original_filename}")
+        if final_path.exists():
+            logger.info(f"File already exists at {final_path} (duplicate content)")
+            temp_path.unlink()
+        else:
+            shutil.move(str(temp_path), str(final_path))
 
-    return str(final_path), sha1, md5, file_size, original_filename, original_sha1, original_md5
+        logger.info(f"Downloaded: {final_path} ({original_file_size} bytes, SHA1: {original_sha1[:8]}...)")
+        logger.info(f"Original filename: {original_filename}")
+        return str(final_path), original_sha1, original_md5, original_file_size, original_filename, None, None, None, None
 
 
 def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = True, category_urls: list[str] = None, categories: list[str] = None, captcha_solver: TwoCaptchaSolver = None):
@@ -783,8 +816,11 @@ def scrape_brand(page: Page, brand: str, download_dir: Path, download: bool = Tr
                 captcha_solver=captcha_solver
             )
             if result:
-                file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5 = result
-                database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5)
+                file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5, original_file_path, original_file_size = result
+                database.update_downloaded(
+                    manual_record["id"], file_path, sha1, md5, file_size, original_filename,
+                    original_sha1, original_md5, original_file_path, original_file_size
+                )
                 consecutive_failures = 0  # Reset on success
                 increment_download_count()
             else:
@@ -1008,8 +1044,11 @@ def main():
                                 captcha_solver=captcha_solver
                             )
                             if result:
-                                file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5 = result
-                                database.update_downloaded(manual_record["id"], file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5)
+                                file_path, sha1, md5, file_size, original_filename, original_sha1, original_md5, original_file_path, original_file_size = result
+                                database.update_downloaded(
+                                    manual_record["id"], file_path, sha1, md5, file_size, original_filename,
+                                    original_sha1, original_md5, original_file_path, original_file_size
+                                )
                                 consecutive_failures = 0  # Reset on success
                                 increment_download_count()
                             else:

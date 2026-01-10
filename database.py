@@ -95,8 +95,181 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_brands_slug ON brands(slug)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_brands_scraped ON brands(scraped)")
 
+    # File variants table - multiple versions of each file (original, stripped, etc.)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS file_variants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            manual_id INTEGER NOT NULL,
+            variant_type TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_sha1 TEXT NOT NULL,
+            file_md5 TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            is_primary INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (manual_id) REFERENCES manuals(id)
+        )
+    """)
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_file_variants_manual_type ON file_variants(manual_id, variant_type)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_variants_manual_id ON file_variants(manual_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_variants_sha1 ON file_variants(file_sha1)")
+
     conn.commit()
     conn.close()
+
+    # Migrate existing data to file_variants table
+    _migrate_to_file_variants()
+
+
+def _migrate_to_file_variants():
+    """Migrate existing file_* columns to file_variants table (runs once on init)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Get all downloaded manuals that don't have variants yet
+    cursor.execute("""
+        SELECT m.id, m.file_path, m.file_sha1, m.file_md5, m.file_size,
+               m.original_file_sha1, m.original_file_md5
+        FROM manuals m
+        WHERE m.downloaded = 1 AND m.file_path IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM file_variants fv WHERE fv.manual_id = m.id)
+    """)
+
+    migrated = 0
+    for row in cursor.fetchall():
+        manual_id = row[0]
+        file_path = row[1]
+        file_sha1 = row[2]
+        file_md5 = row[3]
+        file_size = row[4]
+        original_sha1 = row[5]
+        original_md5 = row[6]
+
+        if not file_sha1 or not file_md5 or not file_size:
+            continue
+
+        # Determine variant type based on whether original differs from final
+        if original_sha1 and original_sha1 != file_sha1:
+            # The stored file is the stripped version
+            variant_type = "stripped"
+        else:
+            # Only original exists (no stripping or stripping didn't change file)
+            variant_type = "original"
+
+        try:
+            cursor.execute("""
+                INSERT INTO file_variants (manual_id, variant_type, file_path, file_sha1, file_md5, file_size, is_primary)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            """, (manual_id, variant_type, file_path, file_sha1, file_md5, file_size))
+            migrated += 1
+        except sqlite3.IntegrityError:
+            pass  # Already exists
+
+    conn.commit()
+    conn.close()
+
+    if migrated > 0:
+        print(f"Migrated {migrated} manuals to file_variants table")
+
+
+# File variant functions
+
+def add_file_variant(
+    manual_id: int,
+    variant_type: str,
+    file_path: str,
+    file_sha1: str,
+    file_md5: str,
+    file_size: int,
+    is_primary: bool = False,
+) -> int | None:
+    """Add a file variant for a manual. Returns variant id or None if already exists."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO file_variants (manual_id, variant_type, file_path, file_sha1, file_md5, file_size, is_primary)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (manual_id, variant_type, file_path, file_sha1, file_md5, file_size, 1 if is_primary else 0))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        return None
+    finally:
+        conn.close()
+
+
+def get_file_variants(manual_id: int) -> list[dict]:
+    """Get all file variants for a manual."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM file_variants
+        WHERE manual_id = ?
+        ORDER BY is_primary DESC, variant_type
+    """, (manual_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_primary_variant(manual_id: int) -> dict | None:
+    """Get the primary file variant for a manual."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM file_variants
+        WHERE manual_id = ? AND is_primary = 1
+    """, (manual_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_variant_by_type(manual_id: int, variant_type: str) -> dict | None:
+    """Get a specific variant type for a manual."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM file_variants
+        WHERE manual_id = ? AND variant_type = ?
+    """, (manual_id, variant_type))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def set_primary_variant(manual_id: int, variant_type: str) -> bool:
+    """Set which variant is primary for a manual. Returns True if successful."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    # Clear existing primary
+    cursor.execute("UPDATE file_variants SET is_primary = 0 WHERE manual_id = ?", (manual_id,))
+    # Set new primary
+    cursor.execute("""
+        UPDATE file_variants SET is_primary = 1
+        WHERE manual_id = ? AND variant_type = ?
+    """, (manual_id, variant_type))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+
+def get_variant_stats() -> dict:
+    """Get statistics about file variants."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT variant_type, COUNT(*) as count
+        FROM file_variants
+        GROUP BY variant_type
+    """)
+    by_type = {row[0]: row[1] for row in cursor.fetchall()}
+    cursor.execute("SELECT COUNT(*) FROM file_variants")
+    total = cursor.fetchone()[0]
+    conn.close()
+    return {"total": total, "by_type": by_type}
 
 
 def add_manual(
@@ -229,15 +402,67 @@ def get_brand_stats() -> dict:
     }
 
 
-def update_downloaded(manual_id: int, file_path: str, file_sha1: str = None, file_md5: str = None, file_size: int = None, original_filename: str = None, original_file_sha1: str = None, original_file_md5: str = None):
+def update_downloaded(
+    manual_id: int,
+    file_path: str,
+    file_sha1: str = None,
+    file_md5: str = None,
+    file_size: int = None,
+    original_filename: str = None,
+    original_file_sha1: str = None,
+    original_file_md5: str = None,
+    original_file_path: str = None,
+    original_file_size: int = None,
+):
+    """Update downloaded status and add file variants."""
     conn = get_connection()
     cursor = conn.cursor()
     downloaded_at = datetime.now().isoformat()
+
+    # Update manuals table (backward compatibility)
     cursor.execute("""
         UPDATE manuals
-        SET downloaded = 1, file_path = ?, file_sha1 = ?, file_md5 = ?, file_size = ?, downloaded_at = ?, original_filename = ?, original_file_sha1 = ?, original_file_md5 = ?
+        SET downloaded = 1, file_path = ?, file_sha1 = ?, file_md5 = ?, file_size = ?,
+            downloaded_at = ?, original_filename = ?, original_file_sha1 = ?, original_file_md5 = ?
         WHERE id = ?
-    """, (file_path, file_sha1, file_md5, file_size, downloaded_at, original_filename, original_file_sha1, original_file_md5, manual_id))
+    """, (file_path, file_sha1, file_md5, file_size, downloaded_at, original_filename,
+          original_file_sha1, original_file_md5, manual_id))
+
+    # Add file variants
+    if file_sha1 and file_md5 and file_size:
+        # Check if we have both original and stripped (different checksums)
+        if original_file_sha1 and original_file_sha1 != file_sha1 and original_file_path:
+            # Add original variant
+            try:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO file_variants
+                    (manual_id, variant_type, file_path, file_sha1, file_md5, file_size, is_primary)
+                    VALUES (?, 'original', ?, ?, ?, ?, 0)
+                """, (manual_id, original_file_path, original_file_sha1, original_file_md5,
+                      original_file_size or file_size))
+            except sqlite3.IntegrityError:
+                pass
+
+            # Add stripped variant (primary)
+            try:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO file_variants
+                    (manual_id, variant_type, file_path, file_sha1, file_md5, file_size, is_primary)
+                    VALUES (?, 'stripped', ?, ?, ?, ?, 1)
+                """, (manual_id, file_path, file_sha1, file_md5, file_size))
+            except sqlite3.IntegrityError:
+                pass
+        else:
+            # Only one variant (original = final, or no stripping)
+            try:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO file_variants
+                    (manual_id, variant_type, file_path, file_sha1, file_md5, file_size, is_primary)
+                    VALUES (?, 'original', ?, ?, ?, ?, 1)
+                """, (manual_id, file_path, file_sha1, file_md5, file_size))
+            except sqlite3.IntegrityError:
+                pass
+
     conn.commit()
     conn.close()
 

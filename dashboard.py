@@ -108,31 +108,80 @@ def api_clear_all():
 
 @app.route("/download/<int:manual_id>")
 def download_file(manual_id):
-    """Serve a downloaded PDF file with the original filename."""
+    """Serve the primary file variant with the original filename."""
     manuals = database.get_all_manuals()
     manual = next((m for m in manuals if m["id"] == manual_id), None)
 
-    if not manual or not manual["downloaded"] or not manual["file_path"]:
+    if not manual or not manual["downloaded"]:
         return "File not found", 404
 
-    file_path = Path(manual["file_path"])
+    # Get primary variant, fallback to legacy file_path
+    primary = database.get_primary_variant(manual_id)
+    if primary:
+        file_path = Path(primary["file_path"])
+    elif manual.get("file_path"):
+        file_path = Path(manual["file_path"])
+    else:
+        return "File not found", 404
+
     if not file_path.exists():
         return "File not found on disk", 404
 
     # Use the original filename if stored, otherwise generate one from model/doc_type
     original_filename = manual.get("original_filename")
     if not original_filename:
-        # Fallback: generate filename from model and doc_type
         model = manual.get("model", "manual")
         doc_type = manual.get("doc_type", "")
         if doc_type:
             original_filename = f"{model}_{doc_type}.pdf"
         else:
             original_filename = f"{model}.pdf"
-        # Sanitize the generated filename
         original_filename = "".join(c if c.isalnum() or c in " ._-" else "_" for c in original_filename)
 
     return send_file(file_path, as_attachment=True, download_name=original_filename)
+
+
+@app.route("/download/<int:manual_id>/<variant_type>")
+def download_variant(manual_id, variant_type):
+    """Serve a specific file variant."""
+    manuals = database.get_all_manuals()
+    manual = next((m for m in manuals if m["id"] == manual_id), None)
+
+    if not manual or not manual["downloaded"]:
+        return "File not found", 404
+
+    variant = database.get_variant_by_type(manual_id, variant_type)
+    if not variant:
+        return f"Variant '{variant_type}' not found", 404
+
+    file_path = Path(variant["file_path"])
+    if not file_path.exists():
+        return "File not found on disk", 404
+
+    # Use the original filename, append variant type if not 'original'
+    original_filename = manual.get("original_filename", "manual.pdf")
+    if variant_type != "original":
+        name_parts = original_filename.rsplit(".", 1)
+        if len(name_parts) == 2:
+            original_filename = f"{name_parts[0]}_{variant_type}.{name_parts[1]}"
+        else:
+            original_filename = f"{original_filename}_{variant_type}"
+
+    return send_file(file_path, as_attachment=True, download_name=original_filename)
+
+
+@app.route("/api/variants/<int:manual_id>")
+def api_variants(manual_id):
+    """Get all file variants for a manual."""
+    variants = database.get_file_variants(manual_id)
+    return jsonify(variants)
+
+
+@app.route("/api/variant-stats")
+def api_variant_stats():
+    """Get statistics about file variants."""
+    stats = database.get_variant_stats()
+    return jsonify(stats)
 
 
 if __name__ == "__main__":
