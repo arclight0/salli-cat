@@ -167,6 +167,9 @@ def dashboard(host, port, debug):
     from dashboard import app
     app.run(host=host, port=port, debug=debug)
 
+# Add 'dash' as shortcut for 'dashboard'
+cli.add_command(dashboard, name="dash")
+
 
 # =============================================================================
 # Check-archive command
